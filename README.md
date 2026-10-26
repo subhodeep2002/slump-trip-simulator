@@ -2,7 +2,7 @@
 
 Replays real concrete truck trips reading by reading and shows how three slump formulas predict the slump of the concrete during the trip.
 
-**Live site:** https://subhodeep2002.github.io/slump-trip-simulator/
+**Live site:** https://slumpsim.duckdns.org
 
 ## What it does
 
