@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Slump Trip Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* layout: sticky transport bar, trip strip, live data band with raw feed, then three formula columns split by hairlines */
+:root {
+  --paper: #F5F5F1;
+  --paper-2: #ECEDE7;
+  --ink: #1C1F22;
+  --ink-2: #555B61;
+  --ink-3: #8B9095;
+  --rule: #D8D9D2;
+  --slump: #2C5AA0;
+  --press: #C2661C;
+  --good: #2F7A4D;
+  --bad: #B03A2E;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--paper); color: var(--ink); }
+body { font-family: var(--mono); font-size: 12.5px; line-height: 1.5; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--paper); }
+.wrap { max-width: 1560px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 1.5px solid var(--slump); outline-offset: 2px; }
+.k { color: var(--ink-3); }
+.brand span, .trip .d, .trip .s, .f .src, .fin span, .ch .v, .ch .at { white-space: pre; }
+.st { white-space: pre-wrap; }
+.u { color: var(--ink-3); font-size: 11px; }
+
+/* bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--paper); border-bottom: 1px solid var(--rule); }
+.bar-in { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding-block: 10px; }
+.brand { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.brand b { font-weight: 600; font-size: 14px; letter-spacing: 0.02em; }
+.transport { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tbtn { padding: 4px 10px; color: var(--ink-2); border-bottom: 1.5px solid transparent; }
+.tbtn:hover { color: var(--ink); }
+.tbtn.on { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+.sep { width: 1px; height: 18px; background: var(--rule); margin: 0 8px; }
+#play { min-width: 76px; text-align: left; color: var(--ink); font-weight: 600; }
+.clock { margin-left: auto; display: flex; gap: 18px; align-items: baseline; }
+#clk { font-size: 18px; font-weight: 500; letter-spacing: 0.02em; }
+
+/* trips */
+.trips { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); border-bottom: 1px solid var(--rule); }
+.trip { text-align: left; padding: 9px 10px 8px; border-top: 2px solid transparent; border-right: 1px solid var(--rule); display: grid; gap: 1px; }
+.trip:hover { background: var(--paper-2); }
+.trip.on { border-top-color: var(--ink); background: var(--paper-2); }
+.trip .n { font-weight: 600; font-size: 13px; }
+.trip .d, .trip .s { color: var(--ink-3); font-size: 10.5px; white-space: nowrap; }
+.trip .flag { color: var(--press); }
+
+/* meta */
+.meta { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--rule); }
+.meta div { padding: 8px 14px 8px 0; margin-right: 14px; border-right: 1px solid var(--rule); white-space: pre; }
+.meta div:last-child { border-right: 0; }
+
+/* live band */
+.live { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); border-bottom: 1px solid var(--rule); }
+.ch { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ch > div { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--rule); border-right: 1px solid var(--rule); padding-left: 12px; min-width: 0; }
+.ch > div:nth-child(4n+1) { padding-left: 0; }
+.ch > div:nth-last-child(-n+4) { border-bottom: 0; }
+.ch .v { font-size: 17px; font-weight: 500; display: block; overflow: hidden; text-overflow: ellipsis; }
+.ch .at { color: var(--ink-3); font-size: 10.5px; }
+.feed { padding: 10px 0 10px 16px; min-width: 0; font-size: 11.5px; line-height: 1.6; height: 132px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
+.feed div { white-space: pre; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
+.feed div:last-child { color: var(--ink); }
+.feed .ts { color: var(--ink-3); margin-right: 10px; }
+.feed .m { color: var(--press); }
+.feed .x { color: var(--bad); }
+
+/* scrubber */
+.scrub { display: flex; align-items: center; gap: 14px; padding-block: 10px; border-bottom: 1px solid var(--rule); }
+.scrub input { flex: 1; min-width: 0; -webkit-appearance: none; appearance: none; height: 18px; background: transparent; }
+.scrub input::-webkit-slider-runnable-track { height: 1px; background: var(--ink-3); }
+.scrub input::-moz-range-track { height: 1px; background: var(--ink-3); }
+.scrub input::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 14px; margin-top: -7px; background: var(--ink); border: 0; border-radius: 0; }
+.scrub input::-moz-range-thumb { width: 9px; height: 14px; background: var(--ink); border: 0; border-radius: 0; }
+
+/* modules */
+.mods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mod { padding: 16px 18px 22px; border-left: 1px solid var(--rule); min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.mod:first-child { border-left: 0; padding-left: 0; }
+.mod:last-child { padding-right: 0; }
+.mh { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.mh .tag { font-weight: 600; font-size: 14px; }
+.mh .nm { color: var(--ink-2); }
+.eq { margin: 0; padding: 10px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: 12px; line-height: 1.7; white-space: pre-wrap; color: var(--ink); }
+.eq .c { color: var(--ink-3); }
+.inp { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; }
+.f { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 8px; padding: 6px 0; border-bottom: 1px solid var(--rule); }
+.f label { color: var(--ink-3); font-size: 11px; grid-column: 1 / -1; }
+.f input { width: 100%; min-width: 0; font: inherit; font-size: 15px; font-weight: 500; color: var(--ink); background: transparent; border: 0; padding: 0; }
+.f input:focus { outline: none; }
+.f:focus-within { border-bottom-color: var(--ink); }
+.f input.bad { color: var(--bad); }
+.f .src { color: var(--ink-3); font-size: 10.5px; }
+.f .src.def { color: var(--press); }
+.cst { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--ink-2); font-size: 11.5px; }
+.cst button { color: var(--ink-3); text-decoration: underline; text-underline-offset: 3px; margin-left: auto; }
+.cst button:hover { color: var(--ink); }
+.big { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.big .sv { font-size: 38px; font-weight: 500; color: var(--slump); letter-spacing: -0.01em; line-height: 1.1; }
+.big .dv { color: var(--ink-2); }
+.st { color: var(--ink-2); font-size: 11.5px; min-height: 18px; }
+.st b { font-weight: 600; color: var(--ink); }
+.kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--rule); }
+.kv > div { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--rule); min-width: 0; }
+.kv > div + div { padding-left: 10px; }
+.kv > div:nth-child(3n+1) { padding-left: 0; }
+.kv > div:not(:nth-child(3n)) { border-right: 1px solid var(--rule); }
+.kv .k { display: block; font-size: 10.5px; }
+.kv .v { font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.lg { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 11px; color: var(--ink-2); }
+.lg i { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
+.lg i.d { border-top-style: dashed; border-top-width: 1px; }
+.cw { width: 100%; }
+.cw svg { display: block; width: 100%; height: 236px; }
+.fin { display: flex; flex-wrap: wrap; gap: 4px 18px; padding-top: 8px; border-top: 1px solid var(--rule); }
+.fin .g { color: var(--good); font-weight: 600; }
+.fin .b { color: var(--bad); font-weight: 600; }
+
+@media (max-width: 1180px) {
+  .mods { grid-template-columns: minmax(0, 1fr); }
+  .mod, .mod:first-child, .mod:last-child { border-left: 0; padding-left: 0; padding-right: 0; border-top: 1px solid var(--rule); }
+  .mod:first-child { border-top: 0; }
+  .live { grid-template-columns: minmax(0, 1fr); }
+  .feed { padding-left: 0; border-top: 1px solid var(--rule); }
+}
+@media (max-width: 640px) {
+  .ch { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ch > div:nth-child(4n+1) { padding-left: 12px; }
+  .ch > div:nth-child(2n+1) { padding-left: 0; }
+  .ch > div:nth-last-child(-n+4) { border-bottom: 1px solid var(--rule); }
+  .ch > div:nth-last-child(-n+2) { border-bottom: 0; }
+  .clock { margin-left: 0; width: 100%; }
+  .kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kv > div:nth-child(3n+1) { padding-left: 10px; }
+  .kv > div:nth-child(2n+1) { padding-left: 0; }
+  .kv > div:not(:nth-child(3n)) { border-right: 0; }
+  .kv > div:nth-child(2n+1) { border-right: 1px solid var(--rule); }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+</head>
+<body>
+<header class="bar">
+  <div class="wrap bar-in">
+    <div class="brand"><b>slump_sim</b><span class="k">truck 1033  jun to jul 2026   trucks 1033 1037 1038  24 oct 2026</span></div>
+    <div class="transport" role="group" aria-label="playback">
+      <button class="tbtn" id="restart" aria-label="restart trip">⟲ restart</button>
+      <button class="tbtn" id="play" aria-label="play or pause">❚❚ pause</button>
+      <button class="tbtn" id="end" aria-label="jump to end">⏭ end</button>
+      <span class="sep" aria-hidden="true"></span>
+      <span class="k" style="margin-right:4px">speed</span>
+      <span id="speeds" style="display:flex;flex-wrap:wrap"></span>
+    </div>
+    <div class="clock"><span id="clk">00:00:00</span><span id="el" class="k">00:00 / 00:00</span></div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <nav class="trips" id="trips" aria-label="trips"></nav>
+    <div class="meta" id="meta"></div>
+    <section class="live">
+      <div class="ch" id="ch"></div>
+      <div class="feed" id="feed" aria-live="off"></div>
+    </section>
+    <div class="scrub"><span class="k">t</span><input type="range" id="scrub" min="0" max="1000" step="100" value="0" aria-label="trip time"><span id="rowc" class="k">0 / 0</span></div>
+    <div class="mods" id="mods"></div>
+  </div>
+</main>
+
+<script>
+var TRIPS = [{"sr":1,"date":"2026-06-22","start":"14:22:23.627","startMs":51743627,"dos":[{"no":"20068480","mix":"G40 100-150","load":12.0,"batch":"14:09","plant":"020","dist":12.0}],"grade":40,"load":12.0,"batch":"14:09","batchToStart":13.4,"plant":190.0,"site":null,"doseL":0.59,"doseN":2,"rows":[[0,98.58,null,10.0,null,null,null,null,null,null,4.0],[66285,107.03,null,10.0,null,null,null,null,null,null,13.0],[135627,76.43,null,10.0,null,null,null,null,null,null,14.0],[201572,74.99,null,10.0,null,null,null,null,null,null,6.0],[271531,53.15,null,10.0,null,null,null,null,null,null,5.0],[337246,55.26,null,10.0,null,null,null,null,null,null,6.0],[407313,56.83,null,10.0,null,null,null,null,null,null,5.0],[473691,58.85,null,10.0,null,null,null,null,null,null,6.0],[542808,70.22,null,10.0,null,null,null,null,null,null,8.0],[608876,69.45,null,10.0,null,null,null,null,null,null,10.0],[790303,49.55,null,10.0,null,null,null,null,null,null,3.0],[858534,51.89,null,10.0,null,null,null,null,null,null,2.0],[924434,51.81,null,10.0,null,null,null,null,null,null,1.0],[967517,null,null,null,null,null,null,null,52.91,null,null],[995222,54.62,null,10.0,null,null,null,null,null,null,1.0],[1061104,53.69,null,10.0,null,null,null,null,null,null,3.0],[1131238,55.89,null,10.0,null,null,null,null,null,null,2.0],[1196852,59.43,null,10.0,null,null,null,null,null,null,3.0],[1262786,57.38,null,10.0,null,null,null,null,null,null,3.0],[1333050,57.31,null,10.0,null,null,null,null,null,null,2.0],[1398806,58.46,null,10.0,null,null,null,null,null,null,3.0],[1465838,57.65,null,10.0,null,null,null,null,null,null,2.0],[1531594,53.13,null,10.0,null,null,null,null,null,null,3.0],[1597320,58.52,null,10.0,null,null,null,null,null,null,2.0],[1633058,null,57.9,null,null,null,null,null,null,null,null],[1667904,58.25,null,10.0,null,null,null,null,null,null,2.0],[1738618,54.5,null,10.0,null,null,null,null,null,null,2.0],[1804467,55.89,null,10.0,null,null,null,null,null,null,2.0],[1874666,58.23,null,10.0,null,null,null,null,null,null,2.0],[1940408,58.22,null,10.0,null,null,null,null,null,null,2.0],[2006134,57.78,null,10.0,null,null,null,null,null,null,1.0],[2076698,59.34,null,10.0,null,null,null,null,null,null,2.0],[2142767,58.94,null,10.0,null,null,null,null,null,null,2.0],[2214975,58.75,null,10.0,null,null,null,null,null,null,1.0],[2284262,59.63,null,10.0,null,null,null,null,null,null,1.0],[2349908,59.31,null,10.0,null,null,null,null,null,null,1.0],[2360073,null,59.21,null,null,null,null,null,null,null,null],[2415649,61.07,null,10.0,null,null,null,null,null,null,2.0],[2482744,null,null,null,null,null,null,null,null,5.0,null],[2486240,60.47,null,10.0,null,null,null,null,null,null,1.0],[2487502,null,null,null,0.59,null,2.0,null,null,null,null],[2490529,null,null,null,null,null,null,null,null,0.0,null],[2557036,60.19,null,10.0,null,null,null,null,null,null,1.0],[2622696,61.13,null,10.0,null,null,null,null,null,null,1.0],[2693441,60.96,null,10.0,null,null,null,null,null,null,1.0],[2759538,61.73,null,10.0,null,null,null,null,null,null,1.0],[2829224,61.03,null,10.0,null,null,null,null,null,null,2.0],[2894917,62.34,null,10.0,null,null,null,null,null,null,1.0],[2965045,61.26,null,10.0,null,null,null,null,null,null,2.0],[3031450,72.68,null,-10.0,null,null,null,null,null,null,5.0],[3100861,18.97,null,-10.0,null,null,null,null,null,null,3.0],[3166212,19.15,null,-10.0,null,null,null,null,null,null,2.0],[3236022,18.79,null,-10.0,null,null,null,null,null,null,3.0],[3301568,18.98,null,-10.0,null,null,null,null,null,null,3.0],[3371380,18.73,null,-10.0,null,null,null,null,null,null,3.0]],"truck":"1033"},{"sr":2,"date":"2026-06-22","start":"17:18:30.452","startMs":62310452,"dos":[{"no":"14494957","mix":"G40 100-150","load":12.0,"batch":"16:44","plant":"014","dist":17.0}],"grade":40,"load":12.0,"batch":"16:44","batchToStart":34.5,"plant":140.0,"site":135.0,"doseL":null,"doseN":null,"rows":[[0,39.88,null,10.0,null,null,null,null,null,null,1.0],[70547,40.27,null,10.0,null,null,null,null,null,null,1.0],[138624,41.71,null,10.0,null,null,null,null,null,null,0.0],[207318,40.02,null,10.0,null,null,null,null,null,null,1.0],[273038,38.15,null,10.0,null,null,null,null,null,null,1.0],[343766,40.18,null,10.0,null,null,null,null,null,null,1.0],[409592,42.93,null,10.0,null,null,null,null,null,null,1.0],[475340,44.73,null,10.0,null,null,null,null,null,null,1.0],[545901,41.56,null,10.0,null,null,null,null,null,null,1.0],[587823,null,41.96,null,null,null,null,null,null,null,null],[612097,38.28,null,10.0,null,null,null,null,null,null,1.0],[678804,50.46,null,10.0,null,null,null,null,null,null,0.0],[744607,49.79,null,10.0,null,null,null,null,null,null,1.0],[814922,43.67,null,10.0,null,null,null,null,null,null,0.0],[880758,42.95,null,10.0,null,null,null,null,null,null,1.0],[950503,41.06,null,10.0,null,null,null,null,null,null,1.0],[1016160,46.1,null,10.0,null,null,null,null,null,null,1.0],[1086857,47.44,null,10.0,null,null,null,null,null,null,1.0],[1152554,46.31,null,10.0,null,null,null,null,null,null,1.0],[1223744,46.56,null,10.0,null,null,null,null,null,null,1.0],[1289664,53.53,null,10.0,null,null,null,null,null,null,2.0],[1314665,null,49.21,null,null,null,null,null,null,null,null],[1359096,49.44,null,10.0,null,null,null,null,null,null,2.0],[1425021,49.54,null,10.0,null,null,null,null,null,null,1.0],[1490861,54.01,null,10.0,null,null,null,null,null,null,2.0],[1563378,54.81,null,10.0,null,null,null,null,null,null,2.0],[1632321,50.34,null,10.0,null,null,null,null,null,null,2.0],[1698409,50.98,null,10.0,null,null,null,null,null,null,1.0],[1768664,50.31,null,10.0,null,null,null,null,null,null,2.0],[1834475,52.72,null,10.0,null,null,null,null,null,null,2.0],[1904317,50.79,null,10.0,null,null,null,null,null,null,1.0],[1969961,54.17,null,10.0,null,null,null,null,null,null,1.0],[2040829,57.75,null,10.0,null,null,null,null,null,null,5.0],[2041461,null,53.73,null,null,null,null,null,null,null,null],[2107003,42.69,null,10.0,null,null,null,null,null,null,0.0],[2177576,55.18,null,10.0,null,null,null,null,null,null,2.0],[2243157,56.47,null,10.0,null,null,null,null,null,null,3.0]],"truck":"1033"},{"sr":3,"date":"2026-06-23","start":"12:43:58.265","startMs":45838265,"dos":[{"no":"14495052","mix":"G40 125-175","load":10.0,"batch":"12:20","plant":"014","dist":17.0}],"grade":40,"load":10.0,"batch":"12:20","batchToStart":24.0,"plant":155.0,"site":161.0,"doseL":null,"doseN":null,"rows":[[0,41.77,null,10.0,null,null,null,null,null,null,1.0],[72063,43.14,null,10.0,null,null,null,null,null,null,1.0],[138064,42.12,null,10.0,null,null,null,null,null,null,1.0],[204904,44.81,null,10.0,null,null,null,null,null,null,0.0],[270534,45.52,null,10.0,null,null,null,null,null,null,1.0],[336373,46.81,null,10.0,null,null,null,null,null,null,2.0],[406750,49.75,null,10.0,null,null,null,null,null,null,2.0],[472791,52.48,null,10.0,null,null,null,null,null,null,2.0],[543156,48.84,null,10.0,null,null,null,null,null,null,1.0],[609235,52.87,null,10.0,null,null,null,null,null,null,2.0],[676194,54.31,null,10.0,null,null,null,null,null,null,2.0],[741835,53.32,null,10.0,null,null,null,null,null,null,2.0],[812810,54.26,null,10.0,null,null,null,null,null,null,2.0],[878853,56.38,null,10.0,null,null,null,null,null,null,2.0],[949482,54.82,null,10.0,null,null,null,null,null,null,3.0],[1015017,55.7,null,10.0,null,null,null,null,null,null,2.0],[1085600,58.8,null,10.0,null,null,null,null,null,null,2.0],[1151424,59.59,null,10.0,null,null,null,null,null,null,3.0],[1221176,54.31,null,10.0,null,null,null,null,null,null,2.0],[1266713,null,null,null,null,null,null,null,58.81,null,null],[1286862,55.67,null,10.0,null,null,null,null,null,null,1.0],[1352661,57.95,null,10.0,null,null,null,null,null,null,2.0],[1423499,53.34,null,10.0,null,null,null,null,null,null,2.0],[1489362,56.35,null,10.0,null,null,null,null,null,null,1.0],[1559980,51.83,null,10.0,null,null,null,null,null,null,1.0],[1630984,55.92,null,10.0,null,null,null,null,null,null,2.0],[1696624,53.97,null,10.0,null,null,null,null,null,null,1.0],[1762787,84.01,null,-10.0,null,null,null,null,null,null,5.0],[1833683,69.99,null,10.0,null,null,null,null,null,null,4.0],[1904542,97.03,null,10.0,null,null,null,null,null,null,11.0],[1935007,null,78.41,null,null,null,null,null,null,null,null],[1970795,46.13,null,10.0,null,null,null,null,null,null,4.0],[2041104,59.67,null,10.0,null,null,null,null,null,null,0.0],[2106995,60.88,null,10.0,null,null,null,null,null,null,1.0]],"truck":"1033"},{"sr":4,"date":"2026-06-23","start":"15:55:00.528","startMs":57300528,"dos":[{"no":"20068567","mix":"G40 170-225 IIIA 36%GGBS 4HRTD","load":12.0,"batch":"15:39","plant":"020","dist":17.0}],"grade":40,"load":12.0,"batch":"15:39","batchToStart":16.0,"plant":204.0,"site":198.0,"doseL":0.82,"doseN":3,"rows":[[0,73.48,null,10.0,null,null,null,null,null,null,12.0],[43830,null,63.15,null,null,null,null,null,null,null,null],[65777,44.6,null,10.0,null,null,null,null,null,null,8.0],[136572,37.61,null,10.0,null,null,null,null,null,null,3.0],[202410,39.65,null,10.0,null,null,null,null,null,null,4.0],[271405,37.34,null,10.0,null,null,null,null,null,null,5.0],[337906,41.74,null,10.0,null,null,null,null,null,null,4.0],[407492,48.59,null,10.0,null,null,null,null,null,null,6.0],[473226,46.74,null,10.0,null,null,null,null,null,null,5.0],[543998,45.73,null,10.0,null,null,null,null,null,null,6.0],[804817,null,44.35,null,null,null,null,null,null,null,null],[827354,38.76,null,10.0,null,null,null,null,null,null,4.0],[893477,39.2,null,10.0,null,null,null,null,null,null,4.0],[962139,46.87,null,10.0,null,null,null,null,null,null,5.0],[1028600,46.38,null,10.0,null,null,null,null,null,null,7.0],[1098220,45.76,null,10.0,null,null,null,null,null,null,4.0],[1164532,51.29,null,10.0,null,null,null,null,null,null,5.0],[1234192,46.03,null,10.0,null,null,null,null,null,null,7.0],[1300506,44.88,null,10.0,null,null,null,null,null,null,5.0],[1370060,47.48,null,10.0,null,null,null,null,null,null,5.0],[1435804,49.89,null,10.0,null,null,null,null,null,null,6.0],[1506376,41.91,null,10.0,null,null,null,null,null,null,5.0],[1527680,null,45.98,null,null,null,null,null,null,null,null],[1572121,50.3,null,10.0,null,null,null,null,null,null,4.0],[1638579,57.16,null,10.0,null,null,null,null,null,null,7.0],[1709511,51.31,null,10.0,null,null,null,null,null,null,7.0],[1779976,46.5,null,10.0,null,null,null,null,null,null,5.0],[1846209,46.19,null,10.0,null,null,null,null,null,null,6.0],[1915871,41.03,null,10.0,null,null,null,null,null,null,5.0],[1981694,39.62,null,10.0,null,null,null,null,null,null,2.0],[2047504,40.71,null,10.0,null,null,null,null,null,null,3.0],[2117651,39.93,null,10.0,null,null,null,null,null,null,2.0],[2183799,45.58,null,10.0,null,null,null,null,null,null,2.0],[2250695,42.32,null,10.0,null,null,null,null,null,null,3.0],[2251166,null,42.45,null,null,null,null,null,null,null,null],[2316737,39.87,null,10.0,null,null,null,null,null,null,2.0],[2387278,41.26,null,10.0,null,null,null,null,null,null,2.0],[2453005,44.62,null,10.0,null,null,null,null,null,null,3.0],[2518736,42.25,null,10.0,null,null,null,null,null,null,3.0],[2590144,40.96,null,10.0,null,null,null,null,null,null,1.0],[2655887,41.4,null,10.0,null,null,null,null,null,null,2.0],[2726428,42.08,null,10.0,null,null,null,null,null,null,1.0],[2792193,41.35,null,10.0,null,null,null,null,null,null,2.0],[2863577,54.18,null,10.0,null,null,null,null,null,null,1.0],[2929220,71.18,null,10.0,null,null,null,null,null,null,13.0],[2980662,null,51.73,null,null,null,null,null,null,null,null],[2995612,32.04,null,10.0,null,null,null,null,null,null,8.0],[3061543,41.44,null,10.0,null,null,null,null,null,null,3.0]],"truck":"1033"},{"sr":5,"date":"2026-06-24","start":"11:14:54.933","startMs":40494933,"dos":[{"no":"14495225","mix":"G45 100-150 CIIIA-SR 40%GGBS","load":12.0,"batch":"10:54","plant":"014","dist":23.0}],"grade":45,"load":12.0,"batch":"10:54","batchToStart":20.9,"plant":191.0,"site":135.0,"doseL":null,"doseN":null,"rows":[[0,43.57,null,10.0,null,null,null,null,null,null,3.0],[70418,44.47,null,10.0,null,null,null,null,null,null,2.0],[136587,44.22,null,10.0,null,null,null,null,null,null,3.0],[203010,43.82,null,10.0,null,null,null,null,null,null,2.0],[269162,46.53,null,10.0,null,null,null,null,null,null,4.0],[338636,47.19,null,10.0,null,null,null,null,null,null,2.0],[404502,47.4,null,10.0,null,null,null,null,null,null,2.0],[470216,47.91,null,10.0,null,null,null,null,null,null,3.0],[540805,52.27,null,10.0,null,null,null,null,null,null,2.0],[582610,null,null,null,null,null,null,null,54.04,null,null],[606820,51.89,null,10.0,null,null,null,null,null,null,3.0],[672868,48.76,null,10.0,null,null,null,null,null,null,2.0],[738571,54.54,null,10.0,null,null,null,null,null,null,3.0],[808342,55.69,null,10.0,null,null,null,null,null,null,4.0],[874686,57.07,null,10.0,null,null,null,null,null,null,4.0],[944302,56.92,null,10.0,null,null,null,null,null,null,3.0],[1010537,58.96,null,10.0,null,null,null,null,null,null,4.0],[1080297,58.34,null,10.0,null,null,null,null,null,null,4.0],[1146746,60.09,null,10.0,null,null,null,null,null,null,4.0],[1216584,56.19,null,10.0,null,null,null,null,null,null,4.0],[1247037,null,58.07,null,null,null,null,null,null,null,null],[1282894,61.06,null,10.0,null,null,null,null,null,null,4.0],[1353557,63.72,null,10.0,null,null,null,null,null,null,4.0],[1419967,63.51,null,10.0,null,null,null,null,null,null,4.0],[1489543,63.85,null,10.0,null,null,null,null,null,null,4.0],[1555970,65.01,null,10.0,null,null,null,null,null,null,4.0],[1625806,60.28,null,10.0,null,null,null,null,null,null,4.0],[1691786,57.91,null,10.0,null,null,null,null,null,null,3.0],[1761465,55.02,null,10.0,null,null,null,null,null,null,2.0],[1827153,55.96,null,10.0,null,null,null,null,null,null,3.0],[1897230,57.0,null,10.0,null,null,null,null,null,null,3.0],[1962949,61.86,null,10.0,null,null,null,null,null,null,2.0],[1972690,null,56.23,null,null,null,null,null,null,null,null],[2033258,58.16,null,10.0,null,null,null,null,null,null,3.0],[2099041,60.13,null,10.0,null,null,null,null,null,null,2.0],[2165065,66.68,null,10.0,null,null,null,null,null,null,4.0],[2235877,67.93,null,10.0,null,null,null,null,null,null,3.0],[2306160,63.25,null,10.0,null,null,null,null,null,null,3.0],[2372507,59.9,null,10.0,null,null,null,null,null,null,4.0],[2442771,66.07,null,10.0,null,null,null,null,null,null,4.0],[2509105,66.09,null,10.0,null,null,null,null,null,null,4.0],[2578725,69.9,null,10.0,null,null,null,null,null,null,4.0],[2645314,68.89,null,10.0,null,null,null,null,null,null,4.0],[2700027,null,68.01,null,null,null,null,null,null,null,null],[2714995,63.43,null,10.0,null,null,null,null,null,null,3.0],[2780683,44.73,null,-10.0,null,null,null,null,null,null,2.0],[2853172,54.27,null,10.0,null,null,null,null,null,null,2.0],[2918761,57.95,null,10.0,null,null,null,null,null,null,1.0],[2984845,58.4,null,10.0,null,null,null,null,null,null,1.0]],"truck":"1033"},{"sr":6,"date":"2026-06-24","start":"14:55:03.398","startMs":53703398,"dos":[{"no":"14495284","mix":"G40 125-175 OPC","load":12.0,"batch":"14:37","plant":"014","dist":10.0}],"grade":40,"load":12.0,"batch":"14:37","batchToStart":18.1,"plant":151.0,"site":160.0,"doseL":null,"doseN":null,"rows":[[0,40.62,null,10.0,null,null,null,null,null,null,2.0],[69784,45.3,null,10.0,null,null,null,null,null,null,1.0],[135652,46.02,null,10.0,null,null,null,null,null,null,1.0],[201473,52.19,null,10.0,null,null,null,null,null,null,3.0],[273572,51.54,null,10.0,null,null,null,null,null,null,3.0],[343188,50.67,null,10.0,null,null,null,null,null,null,2.0],[408877,53.77,null,10.0,null,null,null,null,null,null,2.0],[474912,61.07,null,10.0,null,null,null,null,null,null,3.0],[545241,53.57,null,10.0,null,null,null,null,null,null,2.0],[610800,53.79,null,10.0,null,null,null,null,null,null,3.0],[677025,null,null,null,null,null,null,null,53.3,null,null],[681475,55.53,null,10.0,null,null,null,null,null,null,3.0],[747937,55.76,null,10.0,null,null,null,null,null,null,3.0],[818042,57.07,null,10.0,null,null,null,null,null,null,3.0],[883781,58.85,null,10.0,null,null,null,null,null,null,3.0],[950728,57.37,null,10.0,null,null,null,null,null,null,2.0],[1016482,57.22,null,10.0,null,null,null,null,null,null,2.0],[1086985,60.34,null,10.0,null,null,null,null,null,null,2.0],[1152593,57.49,null,10.0,null,null,null,null,null,null,2.0],[1221992,57.86,null,10.0,null,null,null,null,null,null,2.0],[1287917,59.44,null,10.0,null,null,null,null,null,null,2.0],[1343535,null,57.51,null,null,null,null,null,null,null,null],[1358422,52.53,null,10.0,null,null,null,null,null,null,2.0],[1424642,57.44,null,10.0,null,null,null,null,null,null,2.0],[1494539,59.38,null,10.0,null,null,null,null,null,null,2.0],[1560475,80.31,null,-10.0,null,null,null,null,null,null,6.0],[1631211,41.83,null,-10.0,null,null,null,null,null,null,2.0],[1696949,55.37,null,10.0,null,null,null,null,null,null,1.0],[1767377,57.18,null,10.0,null,null,null,null,null,null,1.0]],"truck":"1033"},{"sr":7,"date":"2026-06-26","start":"11:16:01.873","startMs":40561873,"dos":[{"no":"20068797","mix":"G40 160-210","load":12.0,"batch":"10:58","plant":"020","dist":13.0}],"grade":40,"load":12.0,"batch":"10:58","batchToStart":18.0,"plant":197.0,"site":190.0,"doseL":null,"doseN":null,"rows":[[0,41.49,null,-10.0,null,null,null,null,null,null,3.0],[65974,41.4,null,-10.0,null,null,null,null,null,null,3.0],[136310,44.29,null,-10.0,null,null,null,null,null,null,3.0],[202710,41.69,null,-10.0,null,null,null,null,null,null,4.0],[272238,48.87,null,-10.0,null,null,null,null,null,null,4.0],[338555,53.72,null,-10.0,null,null,null,null,null,null,5.0],[408204,51.38,null,-10.0,null,null,null,null,null,null,6.0],[476289,54.68,null,-10.0,null,null,null,null,null,null,5.0],[544610,56.53,null,-10.0,null,null,null,null,null,null,5.0],[610842,54.26,null,-10.0,null,null,null,null,null,null,6.0],[680312,57.27,null,-10.0,null,null,null,null,null,null,6.0],[746637,52.69,null,-10.0,null,null,null,null,null,null,6.0],[816439,54.25,null,-10.0,null,null,null,null,null,null,6.0],[882215,54.59,null,-10.0,null,null,null,null,null,null,7.0],[953068,56.06,null,-10.0,null,null,null,null,null,null,6.0],[1019407,51.16,null,-10.0,null,null,null,null,null,null,5.0],[1088983,47.47,null,-10.0,null,null,null,null,null,null,3.0],[1154894,49.68,null,-10.0,null,null,null,null,null,null,4.0],[1225294,47.07,null,-10.0,null,null,null,null,null,null,3.0],[1291599,46.14,null,-10.0,null,null,null,null,null,null,3.0],[1361096,47.79,null,-10.0,null,null,null,null,null,null,4.0],[1427408,40.96,null,-10.0,null,null,null,null,null,null,2.0],[1497545,38.49,null,10.0,null,null,null,null,null,null,1.0],[1563189,38.3,null,10.0,null,null,null,null,null,null,0.0],[1628925,45.15,null,10.0,null,null,null,null,null,null,1.0]],"truck":"1033"},{"sr":8,"date":"2026-06-26","start":"13:20:11.000","startMs":48011000,"dos":[{"no":"20068830","mix":"G40 100-150","load":12.0,"batch":"12:58","plant":"020","dist":8.0}],"grade":40,"load":12.0,"batch":"12:58","batchToStart":22.2,"plant":210.0,"site":210.0,"doseL":null,"doseN":null,"rows":[[0,35.5,null,10.0,null,null,null,null,null,null,4.0],[69046,36.67,null,10.0,null,null,null,null,null,null,4.0],[135289,36.01,null,10.0,null,null,null,null,null,null,4.0],[204796,39.19,null,10.0,null,null,null,null,null,null,4.0],[270576,39.23,null,10.0,null,null,null,null,null,null,5.0],[340867,51.4,null,10.0,null,null,null,null,null,null,6.0],[406740,57.17,null,10.0,null,null,null,null,null,null,8.0],[476858,54.79,null,10.0,null,null,null,null,null,null,9.0],[543294,50.45,null,10.0,null,null,null,null,null,null,7.0],[612835,49.14,null,10.0,null,null,null,null,null,null,10.0],[679170,53.7,null,10.0,null,null,null,null,null,null,9.0],[748785,53.73,null,10.0,null,null,null,null,null,null,8.0],[815263,51.19,null,10.0,null,null,null,null,null,null,9.0],[885063,50.81,null,10.0,null,null,null,null,null,null,8.0],[950964,55.09,null,10.0,null,null,null,null,null,null,9.0],[1021137,46.88,null,10.0,null,null,null,null,null,null,8.0],[1087584,40.89,null,10.0,null,null,null,null,null,null,7.0],[1157243,40.6,null,10.0,null,null,null,null,null,null,7.0],[1223615,41.27,null,10.0,null,null,null,null,null,null,4.0],[1293426,40.02,null,10.0,null,null,null,null,null,null,5.0],[1359576,40.66,null,10.0,null,null,null,null,null,null,5.0],[1429540,49.46,null,10.0,null,null,null,null,null,null,4.0],[1495463,45.39,null,10.0,null,null,null,null,null,null,5.0],[1565504,32.85,null,10.0,null,null,null,null,null,null,1.0],[1630861,32.62,null,10.0,null,null,null,null,null,null,1.0]],"truck":"1033"},{"sr":9,"date":"2026-06-26","start":"15:38:55.156","startMs":56335156,"dos":[{"no":"14495697","mix":"G30 50-90","load":5.5,"batch":"15:18","plant":"014","dist":7.0},{"no":"14495696","mix":"G30 50-90","load":2.0,"batch":"15:17","plant":"014","dist":2.0}],"grade":30,"load":7.5,"batch":"15:17","batchToStart":21.9,"plant":120.0,"site":null,"doseL":null,"doseN":null,"rows":[[0,47.48,null,10.0,null,null,null,null,null,null,1.0],[70165,48.69,null,10.0,null,null,null,null,null,null,1.0],[136015,48.62,null,10.0,null,null,null,null,null,null,1.0],[206627,47.14,null,10.0,null,null,null,null,null,null,1.0],[207032,null,null,null,null,null,null,null,44.51,null,null],[272661,38.75,null,10.0,null,null,null,null,null,null,1.0],[342775,48.29,null,10.0,null,null,null,null,null,null,0.0],[408591,53.44,null,10.0,null,null,null,null,null,null,2.0],[479171,53.94,null,10.0,null,null,null,null,null,null,3.0],[545107,52.57,null,10.0,null,null,null,null,null,null,2.0],[615773,57.26,null,10.0,null,null,null,null,null,null,2.0],[681698,54.58,null,10.0,null,null,null,null,null,null,2.0],[752056,52.7,null,10.0,null,null,null,null,null,null,2.0],[817980,42.94,null,-10.0,null,null,null,null,null,null,2.0],[888048,18.19,null,-10.0,null,null,null,null,null,null,1.0],[953403,18.68,null,-10.0,null,null,null,null,null,null,1.0],[1023166,18.79,null,-10.0,null,null,null,null,null,null,1.0],[1088560,18.15,null,-10.0,null,null,null,null,null,null,0.0]],"truck":"1033"},{"sr":10,"date":"2026-07-01","start":"11:16:49.653","startMs":40609653,"dos":[{"no":"14496561","mix":"G15 50-90","load":6.0,"batch":"10:52","plant":"014","dist":11.0}],"grade":15,"load":6.0,"batch":"10:52","batchToStart":24.8,"plant":125.0,"site":120.0,"doseL":null,"doseN":null,"rows":[[0,54.82,null,10.0,null,null,null,null,null,null,2.0],[66065,54.83,null,10.0,null,null,null,null,null,null,2.0],[134015,55.03,null,10.0,null,null,null,null,null,null,2.0],[199715,56.93,null,10.0,null,null,null,null,null,null,2.0],[268227,58.65,null,10.0,null,null,null,null,null,null,2.0],[334004,62.37,null,10.0,null,null,null,null,null,null,3.0],[404675,56.11,null,10.0,null,null,null,null,null,null,1.0],[470469,56.84,null,10.0,null,null,null,null,null,null,2.0],[540834,61.06,null,10.0,null,null,null,null,null,null,3.0],[555890,null,null,null,null,null,null,null,55.8,null,null],[606606,58.5,null,10.0,null,null,null,null,null,null,3.0],[858499,59.85,null,10.0,null,null,null,null,null,null,2.0],[924353,61.17,null,10.0,null,null,null,null,null,null,3.0],[990284,60.09,null,10.0,null,null,null,null,null,null,1.0],[1060474,59.03,null,10.0,null,null,null,null,null,null,3.0],[1126259,59.92,null,10.0,null,null,null,null,null,null,2.0],[1192608,58.82,null,10.0,null,null,null,null,null,null,3.0],[1222887,null,58.44,null,null,null,null,null,null,null,null],[1258530,57.64,null,10.0,null,null,null,null,null,null,2.0],[1324322,57.93,null,10.0,null,null,null,null,null,null,2.0],[1395020,57.4,null,10.0,null,null,null,null,null,null,2.0],[1460787,58.56,null,10.0,null,null,null,null,null,null,2.0],[1527070,59.5,null,10.0,null,null,null,null,null,null,2.0],[1592803,60.03,null,10.0,null,null,null,null,null,null,1.0],[1663410,60.47,null,10.0,null,null,null,null,null,null,2.0],[1729026,50.61,null,-10.0,null,null,null,null,null,null,1.0],[1799923,43.41,null,10.0,null,null,null,null,null,null,1.0],[1865549,57.19,null,10.0,null,null,null,null,null,null,1.0]],"truck":"1033"},{"sr":11,"date":"2026-07-01","start":"13:40:32.791","startMs":49232791,"dos":[{"no":"20069486","mix":"G40 100-150","load":12.0,"batch":"13:24","plant":"020","dist":8.0}],"grade":40,"load":12.0,"batch":"13:24","batchToStart":16.5,"plant":203.0,"site":183.0,"doseL":null,"doseN":null,"rows":[[0,43.11,null,10.0,null,null,null,null,null,null,4.0],[66267,41.81,null,10.0,null,null,null,null,null,null,4.0],[135870,41.88,null,10.0,null,null,null,null,null,null,4.0],[202377,41.95,null,10.0,null,null,null,null,null,null,6.0],[272251,47.46,null,10.0,null,null,null,null,null,null,4.0],[338521,56.24,null,10.0,null,null,null,null,null,null,6.0],[408145,59.93,null,10.0,null,null,null,null,null,null,8.0],[474471,61.33,null,10.0,null,null,null,null,null,null,8.0],[544213,60.99,null,10.0,null,null,null,null,null,null,8.0],[610451,61.9,null,10.0,null,null,null,null,null,null,8.0],[680197,59.18,null,10.0,null,null,null,null,null,null,9.0],[746385,58.94,null,10.0,null,null,null,null,null,null,8.0],[816167,57.87,null,10.0,null,null,null,null,null,null,7.0],[882583,57.43,null,10.0,null,null,null,null,null,null,7.0],[952502,54.09,null,10.0,null,null,null,null,null,null,6.0],[1018339,49.83,null,10.0,null,null,null,null,null,null,5.0],[1088707,53.04,null,10.0,null,null,null,null,null,null,6.0],[1154425,24.23,null,10.0,null,null,null,null,null,null,0.0],[1224257,39.32,null,10.0,null,null,null,null,null,null,1.0]],"truck":"1033"},{"sr":12,"date":"2026-07-01","start":"15:16:28.797","startMs":54988797,"dos":[{"no":"20069510","mix":"G40 225+-30 OPC 4HRTD","load":12.0,"batch":"15:00","plant":"020","dist":26.0}],"grade":40,"load":12.0,"batch":"15:00","batchToStart":16.5,"plant":237.0,"site":216.0,"doseL":null,"doseN":null,"rows":[[0,30.77,null,10.0,null,null,null,null,null,null,2.0],[69565,30.98,null,10.0,null,null,null,null,null,null,2.0],[135043,33.43,null,10.0,null,null,null,null,null,null,1.0],[204907,34.92,null,10.0,null,null,null,null,null,null,3.0],[270286,32.43,null,10.0,null,null,null,null,null,null,2.0],[340100,31.03,null,10.0,null,null,null,null,null,null,2.0],[405609,31.39,null,10.0,null,null,null,null,null,null,1.0],[475321,31.45,null,10.0,null,null,null,null,null,null,2.0],[540686,33.42,null,10.0,null,null,null,null,null,null,2.0],[611202,39.21,null,10.0,null,null,null,null,null,null,6.0],[676953,50.86,null,10.0,null,null,null,null,null,null,8.0],[746978,53.89,null,10.0,null,null,null,null,null,null,8.0],[812803,55.34,null,10.0,null,null,null,null,null,null,8.0],[882916,54.03,null,10.0,null,null,null,null,null,null,9.0],[949299,54.42,null,10.0,null,null,null,null,null,null,9.0],[1018939,54.12,null,10.0,null,null,null,null,null,null,9.0],[1084953,57.02,null,10.0,null,null,null,null,null,null,10.0],[1155402,59.91,null,10.0,null,null,null,null,null,null,11.0],[1221454,60.47,null,10.0,null,null,null,null,null,null,10.0],[1291779,58.66,null,10.0,null,null,null,null,null,null,11.0],[1358260,59.6,null,10.0,null,null,null,null,null,null,10.0],[1427773,52.65,null,10.0,null,null,null,null,null,null,10.0],[1493496,54.94,null,10.0,null,null,null,null,null,null,9.0],[1564093,45.55,null,10.0,null,null,null,null,null,null,9.0],[1630499,43.36,null,10.0,null,null,null,null,null,null,5.0],[1700370,46.09,null,10.0,null,null,null,null,null,null,8.0],[1770290,41.57,null,10.0,null,null,null,null,null,null,6.0],[1837441,43.84,null,10.0,null,null,null,null,null,null,8.0],[1903419,42.53,null,10.0,null,null,null,null,null,null,5.0],[1973720,47.12,null,10.0,null,null,null,null,null,null,6.0],[2040231,52.63,null,10.0,null,null,null,null,null,null,9.0],[2109967,50.97,null,10.0,null,null,null,null,null,null,8.0],[2176432,51.94,null,10.0,null,null,null,null,null,null,10.0],[2246014,56.64,null,10.0,null,null,null,null,null,null,7.0],[2312213,53.62,null,10.0,null,null,null,null,null,null,9.0],[2381785,52.72,null,10.0,null,null,null,null,null,null,9.0],[2447800,56.04,null,10.0,null,null,null,null,null,null,9.0],[2518053,61.62,null,10.0,null,null,null,null,null,null,10.0],[2584380,57.44,null,10.0,null,null,null,null,null,null,9.0],[2655043,53.44,null,10.0,null,null,null,null,null,null,10.0],[2720919,52.24,null,10.0,null,null,null,null,null,null,7.0],[2790527,47.08,null,10.0,null,null,null,null,null,null,8.0],[2856700,38.1,null,10.0,null,null,null,null,null,null,6.0],[2927358,38.34,null,10.0,null,null,null,null,null,null,5.0],[2993377,37.9,null,10.0,null,null,null,null,null,null,4.0],[3063505,38.18,null,10.0,null,null,null,null,null,null,4.0],[3129461,38.86,null,10.0,null,null,null,null,null,null,5.0],[3395551,38.63,null,10.0,null,null,null,null,null,null,5.0],[3462273,40.7,null,10.0,null,null,null,null,null,null,4.0],[3528002,29.41,null,10.0,null,null,null,null,null,null,3.0],[3597507,32.61,null,10.0,null,null,null,null,null,null,0.0]],"truck":"1033"},{"sr":13,"date":"2026-07-02","start":"10:02:52.825","startMs":36172825,"dos":[{"no":"20069566","mix":"G40 160-210","load":12.0,"batch":"09:46","plant":"020","dist":13.0}],"grade":40,"load":12.0,"batch":"09:46","batchToStart":16.9,"plant":214.0,"site":201.0,"doseL":null,"doseN":null,"rows":[[0,36.09,null,10.0,null,null,null,null,null,null,2.0],[70917,36.2,null,10.0,null,null,null,null,null,null,2.0],[136565,37.97,null,10.0,null,null,null,null,null,null,3.0],[206257,42.2,null,10.0,null,null,null,null,null,null,3.0],[271802,39.75,null,10.0,null,null,null,null,null,null,3.0],[342512,43.91,null,10.0,null,null,null,null,null,null,4.0],[408986,40.62,null,10.0,null,null,null,null,null,null,4.0],[478472,45.41,null,10.0,null,null,null,null,null,null,4.0],[544987,44.14,null,10.0,null,null,null,null,null,null,4.0],[614398,46.31,null,10.0,null,null,null,null,null,null,3.0],[679986,45.3,null,10.0,null,null,null,null,null,null,4.0],[750471,44.65,null,10.0,null,null,null,null,null,null,5.0],[816220,43.34,null,10.0,null,null,null,null,null,null,4.0],[886514,41.36,null,10.0,null,null,null,null,null,null,3.0],[952191,41.26,null,10.0,null,null,null,null,null,null,3.0],[1022928,39.26,null,10.0,null,null,null,null,null,null,3.0],[1088648,39.46,null,10.0,null,null,null,null,null,null,2.0],[1159260,39.7,null,10.0,null,null,null,null,null,null,1.0],[1221547,null,null,null,null,null,null,null,39.84,null,null],[1225045,40.08,null,10.0,null,null,null,null,null,null,2.0],[1294838,40.43,null,10.0,null,null,null,null,null,null,2.0],[1360722,40.4,null,10.0,null,null,null,null,null,null,2.0],[1430992,40.23,null,10.0,null,null,null,null,null,null,2.0],[1496650,40.66,null,10.0,null,null,null,null,null,null,2.0],[1562411,41.05,null,10.0,null,null,null,null,null,null,1.0],[1628281,42.03,null,10.0,null,null,null,null,null,null,2.0],[1694187,40.66,null,10.0,null,null,null,null,null,null,2.0],[1764605,41.25,null,10.0,null,null,null,null,null,null,2.0],[1830269,40.98,null,10.0,null,null,null,null,null,null,1.0],[1885685,null,41.02,null,null,null,null,null,null,null,null],[1900584,41.65,null,10.0,null,null,null,null,null,null,2.0],[1966748,57.24,null,10.0,null,null,null,null,null,null,2.0],[2037301,61.37,null,10.0,null,null,null,null,null,null,6.0],[2103347,37.32,null,10.0,null,null,null,null,null,null,1.0],[2173464,37.55,null,10.0,null,null,null,null,null,null,1.0]],"truck":"1033"},{"sr":14,"date":"2026-07-02","start":"13:18:07.675","startMs":47887675,"dos":[{"no":"20069600","mix":"G40 125-175 OPC","load":12.0,"batch":"12:50","plant":"020","dist":10.0}],"grade":40,"load":12.0,"batch":"12:50","batchToStart":28.1,"plant":185.0,"site":165.0,"doseL":null,"doseN":null,"rows":[[0,41.6,null,10.0,null,null,null,null,null,null,2.0],[65815,40.9,null,10.0,null,null,null,null,null,null,2.0],[135816,40.47,null,10.0,null,null,null,null,null,null,1.0],[201396,41.22,null,10.0,null,null,null,null,null,null,2.0],[268885,39.42,null,10.0,null,null,null,null,null,null,3.0],[334513,40.47,null,10.0,null,null,null,null,null,null,2.0],[400217,43.14,null,10.0,null,null,null,null,null,null,2.0],[471634,45.8,null,10.0,null,null,null,null,null,null,3.0],[537314,44.06,null,10.0,null,null,null,null,null,null,2.0],[604149,46.86,null,10.0,null,null,null,null,null,null,3.0],[670378,47.61,null,10.0,null,null,null,null,null,null,5.0],[740091,46.49,null,10.0,null,null,null,null,null,null,2.0],[808083,48.11,null,10.0,null,null,null,null,null,null,3.0],[876678,49.3,null,10.0,null,null,null,null,null,null,4.0],[942417,48.81,null,10.0,null,null,null,null,null,null,3.0],[1008036,55.23,null,10.0,null,null,null,null,null,null,4.0],[1078810,52.04,null,10.0,null,null,null,null,null,null,5.0],[1149934,52.23,null,10.0,null,null,null,null,null,null,4.0],[1216172,46.84,null,10.0,null,null,null,null,null,null,4.0],[1285967,46.63,null,10.0,null,null,null,null,null,null,4.0],[1351974,44.87,null,10.0,null,null,null,null,null,null,2.0],[1422580,49.22,null,10.0,null,null,null,null,null,null,3.0],[1462977,null,null,null,null,null,null,null,46.09,null,null],[1488310,48.0,null,10.0,null,null,null,null,null,null,3.0],[1558889,50.76,null,10.0,null,null,null,null,null,null,3.0],[1624960,47.21,null,10.0,null,null,null,null,null,null,2.0],[1695157,46.25,null,10.0,null,null,null,null,null,null,2.0],[1763237,47.83,null,10.0,null,null,null,null,null,null,2.0],[1832186,48.2,null,10.0,null,null,null,null,null,null,2.0],[1897971,47.97,null,10.0,null,null,null,null,null,null,2.0],[1968117,51.76,null,10.0,null,null,null,null,null,null,3.0],[2033845,51.6,null,10.0,null,null,null,null,null,null,3.0],[2099635,50.34,null,10.0,null,null,null,null,null,null,3.0],[2124682,null,51.07,null,null,null,null,null,null,null,null],[2170358,55.15,null,10.0,null,null,null,null,null,null,4.0],[2236150,32.84,null,10.0,null,null,null,null,null,null,1.0],[2302043,49.01,null,10.0,null,null,null,null,null,null,0.0],[2367825,44.99,null,10.0,null,null,null,null,null,null,1.0],[2438336,50.96,null,10.0,null,null,null,null,null,null,0.0],[2505983,47.83,null,10.0,null,null,null,null,null,null,0.0]],"truck":"1033"},{"sr":15,"date":"2026-07-02","start":"15:45:57.637","startMs":56757637,"dos":[{"no":"14496827","mix":"G40 160-210 4HRTD","load":6.0,"batch":"15:23","plant":"014","dist":12.0}],"grade":40,"load":6.0,"batch":"15:23","batchToStart":23.0,"plant":203.0,"site":207.0,"doseL":null,"doseN":null,"rows":[[0,33.86,null,10.0,null,null,null,null,null,null,1.0],[69798,34.58,null,10.0,null,null,null,null,null,null,1.0],[135155,33.74,null,10.0,null,null,null,null,null,null,1.0],[205082,34.26,null,10.0,null,null,null,null,null,null,1.0],[270449,32.41,null,10.0,null,null,null,null,null,null,0.0],[335933,35.87,null,10.0,null,null,null,null,null,null,0.0],[405971,35.62,null,10.0,null,null,null,null,null,null,1.0],[477111,32.58,null,10.0,null,null,null,null,null,null,0.0],[542513,35.75,null,10.0,null,null,null,null,null,null,1.0],[608519,43.1,null,10.0,null,null,null,null,null,null,3.0],[680570,42.82,null,10.0,null,null,null,null,null,null,3.0],[749323,44.03,null,10.0,null,null,null,null,null,null,3.0],[814942,42.56,null,10.0,null,null,null,null,null,null,2.0],[880605,44.95,null,10.0,null,null,null,null,null,null,3.0],[952751,43.2,null,10.0,null,null,null,null,null,null,3.0],[1022533,44.55,null,10.0,null,null,null,null,null,null,3.0],[1088072,44.85,null,10.0,null,null,null,null,null,null,3.0],[1158166,45.68,null,10.0,null,null,null,null,null,null,3.0],[1224860,40.22,null,10.0,null,null,null,null,null,null,3.0],[1294911,41.2,null,10.0,null,null,null,null,null,null,1.0],[1360450,40.68,null,10.0,null,null,null,null,null,null,3.0],[1426089,44.2,null,10.0,null,null,null,null,null,null,2.0],[1496622,42.81,null,10.0,null,null,null,null,null,null,2.0],[1645691,42.25,null,10.0,null,null,null,null,null,null,2.0],[1711570,41.08,null,10.0,null,null,null,null,null,null,2.0],[1779866,41.17,null,10.0,null,null,null,null,null,null,1.0],[1846056,44.17,null,10.0,null,null,null,null,null,null,3.0],[1915900,37.56,null,10.0,null,null,null,null,null,null,2.0],[1918655,null,null,null,null,null,null,null,44.35,null,null],[1982116,38.53,null,10.0,null,null,null,null,null,null,2.0],[2052024,38.49,null,10.0,null,null,null,null,null,null,1.0],[2117636,38.67,null,10.0,null,null,null,null,null,null,1.0],[2183543,38.26,null,10.0,null,null,null,null,null,null,1.0],[2253814,39.17,null,10.0,null,null,null,null,null,null,2.0],[2319511,39.11,null,10.0,null,null,null,null,null,null,1.0],[2390686,38.64,null,10.0,null,null,null,null,null,null,2.0],[2456271,39.39,null,10.0,null,null,null,null,null,null,1.0],[2530324,0.0,null,-10.0,null,null,null,null,null,null,2.0],[2695946,0.0,null,-10.0,null,null,null,null,null,null,0.0],[2788769,0.0,null,-10.0,null,null,null,null,null,null,0.0],[2874488,0.0,null,-10.0,null,null,null,null,null,null,0.0],[2944353,39.2,null,10.0,null,null,null,null,null,null,0.0],[3010275,39.16,null,10.0,null,null,null,null,null,null,2.0],[3079374,39.13,null,10.0,null,null,null,null,null,null,1.0],[3145389,40.55,null,10.0,null,null,null,null,null,null,2.0],[3211136,39.26,null,10.0,null,null,null,null,null,null,1.0],[3281420,39.16,null,10.0,null,null,null,null,null,null,2.0],[3347521,40.03,null,10.0,null,null,null,null,null,null,1.0],[3414221,37.33,null,10.0,null,null,null,null,null,null,2.0],[3479903,22.44,null,10.0,null,null,null,null,null,null,2.0],[3550232,34.87,null,10.0,null,null,null,null,null,null,1.0],[3615650,36.62,null,10.0,null,null,null,null,null,null,1.0]],"truck":"1033"},{"sr":16,"date":"2026-07-04","start":"10:21:07.795","startMs":37267795,"dos":[{"no":"20069904","mix":"G35 100-150","load":12.0,"batch":"09:54","plant":"020","dist":21.0}],"grade":35,"load":12.0,"batch":"09:54","batchToStart":27.1,"plant":240.0,"site":null,"doseL":null,"doseN":null,"rows":[[0,38.62,null,10.0,null,null,null,null,null,null,4.0],[66133,39.66,null,10.0,null,null,null,null,null,null,5.0],[135923,39.71,null,10.0,null,null,null,null,null,null,4.0],[202380,45.27,null,10.0,null,null,null,null,null,null,5.0],[271980,51.0,null,10.0,null,null,null,null,null,null,6.0],[338118,39.79,null,10.0,null,null,null,null,null,null,6.0],[408503,36.86,null,10.0,null,null,null,null,null,null,2.0],[474344,36.1,null,10.0,null,null,null,null,null,null,2.0],[544521,34.84,null,10.0,null,null,null,null,null,null,2.0],[550158,null,null,null,null,null,null,null,39.58,null,null],[609977,34.3,null,10.0,null,null,null,null,null,null,2.0],[680053,35.26,null,10.0,null,null,null,null,null,null,1.0],[745667,33.42,null,10.0,null,null,null,null,null,null,3.0],[815402,35.06,null,10.0,null,null,null,null,null,null,2.0],[881312,36.35,null,10.0,null,null,null,null,null,null,3.0],[947313,38.31,null,10.0,null,null,null,null,null,null,2.0],[1017307,38.14,null,10.0,null,null,null,null,null,null,3.0],[1082968,39.01,null,10.0,null,null,null,null,null,null,3.0],[1150352,36.05,null,10.0,null,null,null,null,null,null,2.0],[1211690,null,37.95,null,null,null,null,null,null,null,null],[1216297,37.57,null,10.0,null,null,null,null,null,null,2.0],[1286123,36.86,null,10.0,null,null,null,null,null,null,3.0],[1352038,37.12,null,10.0,null,null,null,null,null,null,2.0],[1417775,38.03,null,10.0,null,null,null,null,null,null,3.0],[1487928,37.28,null,10.0,null,null,null,null,null,null,3.0],[1553639,37.62,null,10.0,null,null,null,null,null,null,2.0],[1620043,35.59,null,10.0,null,null,null,null,null,null,3.0],[1687178,35.95,null,10.0,null,null,null,null,null,null,1.0],[1756159,37.15,null,10.0,null,null,null,null,null,null,2.0],[1822966,35.88,null,10.0,null,null,null,null,null,null,1.0],[1888474,34.69,null,10.0,null,null,null,null,null,null,1.0],[1954237,36.29,null,10.0,null,null,null,null,null,null,2.0],[1983664,null,36.54,null,null,null,null,null,null,null,null],[2024093,36.02,null,10.0,null,null,null,null,null,null,2.0],[2089653,33.55,null,10.0,null,null,null,null,null,null,2.0],[2298263,32.61,null,10.0,null,null,null,null,null,null,1.0],[2378498,30.78,null,10.0,null,null,null,null,null,null,2.0],[2443803,32.58,null,10.0,null,null,null,null,null,null,1.0],[2513932,34.98,null,10.0,null,null,null,null,null,null,1.0],[2585454,33.78,null,10.0,null,null,null,null,null,null,1.0],[2650799,36.03,null,10.0,null,null,null,null,null,null,1.0],[2720005,35.51,null,10.0,null,null,null,null,null,null,2.0],[2785743,64.18,null,10.0,null,null,null,null,null,null,1.0],[2856230,61.1,null,-10.0,null,null,null,null,null,null,7.0],[2921854,19.07,null,-10.0,null,null,null,null,null,null,0.0],[2991896,19.27,null,-10.0,null,null,null,null,null,null,0.0],[3057314,19.5,null,-10.0,null,null,null,null,null,null,0.0],[3122884,19.54,null,-10.0,null,null,null,null,null,null,0.0],[3188207,19.65,null,-10.0,null,null,null,null,null,null,0.0]],"truck":"1033"},{"sr":17,"date":"2026-07-04","start":"13:01:15.273","startMs":46875273,"dos":[{"no":"14497205","mix":"G40 125-175 OPC","load":12.0,"batch":"12:43","plant":"014","dist":6.0}],"grade":40,"load":12.0,"batch":"12:43","batchToStart":18.3,"plant":131.0,"site":null,"doseL":null,"doseN":null,"rows":[[0,30.33,null,10.0,null,null,null,null,null,null,2.0],[65286,30.69,null,10.0,null,null,null,null,null,null,2.0],[134972,30.15,null,10.0,null,null,null,null,null,null,2.0],[200394,32.79,null,10.0,null,null,null,null,null,null,1.0],[270195,30.86,null,10.0,null,null,null,null,null,null,3.0],[336049,29.21,null,10.0,null,null,null,null,null,null,2.0],[405231,31.8,null,10.0,null,null,null,null,null,null,2.0],[470531,31.36,null,10.0,null,null,null,null,null,null,3.0],[540247,33.12,null,10.0,null,null,null,null,null,null,2.0],[605538,34.5,null,10.0,null,null,null,null,null,null,2.0],[675447,32.49,null,10.0,null,null,null,null,null,null,3.0],[740771,31.1,null,10.0,null,null,null,null,null,null,1.0],[810424,32.58,null,10.0,null,null,null,null,null,null,2.0],[875802,30.7,null,10.0,null,null,null,null,null,null,2.0],[945729,31.04,null,10.0,null,null,null,null,null,null,2.0],[1011380,32.45,null,10.0,null,null,null,null,null,null,1.0],[1080767,32.96,null,10.0,null,null,null,null,null,null,1.0],[1146231,33.46,null,10.0,null,null,null,null,null,null,2.0],[1215900,32.05,null,10.0,null,null,null,null,null,null,1.0],[1281219,32.71,null,10.0,null,null,null,null,null,null,2.0],[1351084,32.4,null,10.0,null,null,null,null,null,null,1.0],[1416426,33.01,null,10.0,null,null,null,null,null,null,1.0],[1486372,33.38,null,10.0,null,null,null,null,null,null,1.0],[1551668,32.27,null,10.0,null,null,null,null,null,null,2.0],[1621564,34.66,null,10.0,null,null,null,null,null,null,1.0],[1686912,31.83,null,10.0,null,null,null,null,null,null,1.0],[1756673,34.2,null,10.0,null,null,null,null,null,null,1.0],[1822018,34.53,null,10.0,null,null,null,null,null,null,2.0],[1891642,32.36,null,10.0,null,null,null,null,null,null,1.0],[1956961,34.86,null,10.0,null,null,null,null,null,null,1.0],[2026704,32.34,null,10.0,null,null,null,null,null,null,2.0],[2092001,33.65,null,10.0,null,null,null,null,null,null,1.0],[2162008,33.54,null,10.0,null,null,null,null,null,null,1.0],[2227320,31.8,null,10.0,null,null,null,null,null,null,1.0],[2296960,34.34,null,10.0,null,null,null,null,null,null,2.0],[2362423,33.63,null,10.0,null,null,null,null,null,null,1.0],[2432045,32.25,null,10.0,null,null,null,null,null,null,1.0],[2497366,34.28,null,10.0,null,null,null,null,null,null,1.0],[2567527,33.62,null,10.0,null,null,null,null,null,null,2.0],[2632879,33.94,null,10.0,null,null,null,null,null,null,1.0],[2702622,34.96,null,10.0,null,null,null,null,null,null,1.0],[2768138,34.4,null,10.0,null,null,null,null,null,null,2.0],[2838231,35.28,null,10.0,null,null,null,null,null,null,1.0],[2903743,34.25,null,10.0,null,null,null,null,null,null,1.0],[2973720,34.65,null,10.0,null,null,null,null,null,null,1.0],[3039284,35.59,null,10.0,null,null,null,null,null,null,2.0],[3104800,35.06,null,10.0,null,null,null,null,null,null,1.0],[3175083,35.4,null,10.0,null,null,null,null,null,null,1.0],[3240697,35.51,null,10.0,null,null,null,null,null,null,1.0],[3307009,34.12,null,10.0,null,null,null,null,null,null,1.0],[3373033,35.81,null,10.0,null,null,null,null,null,null,1.0],[3438869,35.59,null,10.0,null,null,null,null,null,null,2.0],[3508843,34.26,null,10.0,null,null,null,null,null,null,1.0],[3574141,34.74,null,10.0,null,null,null,null,null,null,1.0],[3639857,34.96,null,10.0,null,null,null,null,null,null,2.0],[3705265,35.63,null,10.0,null,null,null,null,null,null,1.0],[3775942,34.95,null,10.0,null,null,null,null,null,null,1.0],[3841287,35.03,null,10.0,null,null,null,null,null,null,1.0],[3906821,36.11,null,10.0,null,null,null,null,null,null,1.0],[3973243,35.22,null,10.0,null,null,null,null,null,null,2.0],[4038747,34.77,null,10.0,null,null,null,null,null,null,1.0],[4104298,35.67,null,10.0,null,null,null,null,null,null,1.0],[4170583,35.63,null,10.0,null,null,null,null,null,null,2.0],[4236050,34.84,null,10.0,null,null,null,null,null,null,1.0],[4301636,35.66,null,10.0,null,null,null,null,null,null,1.0],[4368210,35.65,null,10.0,null,null,null,null,null,null,1.0],[4433997,35.02,null,10.0,null,null,null,null,null,null,2.0],[4499679,35.6,null,10.0,null,null,null,null,null,null,1.0],[4570114,35.39,null,10.0,null,null,null,null,null,null,1.0],[4635659,35.96,null,10.0,null,null,null,null,null,null,2.0],[4703383,36.01,null,10.0,null,null,null,null,null,null,1.0],[4769006,35.54,null,10.0,null,null,null,null,null,null,1.0],[4834536,36.34,null,10.0,null,null,null,null,null,null,2.0],[4904493,36.38,null,10.0,null,null,null,null,null,null,1.0],[4970041,36.85,null,10.0,null,null,null,null,null,null,1.0],[5037833,36.55,null,10.0,null,null,null,null,null,null,1.0],[5103297,36.48,null,10.0,null,null,null,null,null,null,2.0],[5168924,36.92,null,10.0,null,null,null,null,null,null,1.0],[5235504,37.42,null,10.0,null,null,null,null,null,null,1.0],[5301307,36.02,null,10.0,null,null,null,null,null,null,1.0],[5366922,37.21,null,10.0,null,null,null,null,null,null,2.0],[5437703,37.02,null,10.0,null,null,null,null,null,null,1.0],[5503412,37.2,null,10.0,null,null,null,null,null,null,1.0],[5573984,38.35,null,10.0,null,null,null,null,null,null,2.0],[5617715,null,null,null,null,null,null,null,36.56,null,null],[5639544,36.28,null,10.0,null,null,null,null,null,null,1.0],[5706278,37.42,null,10.0,null,null,null,null,null,null,1.0],[5771971,37.87,null,10.0,null,null,null,null,null,null,2.0],[5837721,37.0,null,10.0,null,null,null,null,null,null,1.0],[5904436,38.07,null,10.0,null,null,null,null,null,null,1.0],[5970276,37.77,null,10.0,null,null,null,null,null,null,1.0],[6035948,37.99,null,10.0,null,null,null,null,null,null,2.0],[6102171,38.27,null,10.0,null,null,null,null,null,null,1.0],[6168344,36.99,null,10.0,null,null,null,null,null,null,1.0],[6238409,39.07,null,10.0,null,null,null,null,null,null,1.0],[6284617,null,38.34,null,null,null,null,null,null,null,null],[6304094,38.19,null,10.0,null,null,null,null,null,null,2.0],[6374887,38.97,null,10.0,null,null,null,null,null,null,1.0],[6440641,38.59,null,10.0,null,null,null,null,null,null,2.0],[6506540,38.77,null,10.0,null,null,null,null,null,null,1.0],[6576723,38.86,null,10.0,null,null,null,null,null,null,2.0],[6642312,38.6,null,10.0,null,null,null,null,null,null,1.0],[6709300,38.4,null,10.0,null,null,null,null,null,null,1.0],[6774931,37.4,null,10.0,null,null,null,null,null,null,1.0],[6840580,39.92,null,10.0,null,null,null,null,null,null,2.0],[6910905,38.81,null,10.0,null,null,null,null,null,null,1.0],[6977393,38.08,null,10.0,null,null,null,null,null,null,1.0],[7013290,null,38.41,null,null,null,null,null,null,null,null],[7047618,38.93,null,10.0,null,null,null,null,null,null,2.0],[7113338,38.39,null,10.0,null,null,null,null,null,null,1.0],[7179968,38.85,null,10.0,null,null,null,null,null,null,1.0],[7245498,38.58,null,10.0,null,null,null,null,null,null,1.0],[7311633,38.16,null,10.0,null,null,null,null,null,null,2.0],[7382815,38.67,null,10.0,null,null,null,null,null,null,1.0],[7449263,38.87,null,10.0,null,null,null,null,null,null,1.0],[7519349,38.96,null,10.0,null,null,null,null,null,null,2.0],[7584986,65.84,null,10.0,null,null,null,null,null,null,2.0],[7651549,28.32,null,-10.0,null,null,null,null,null,null,9.0],[7716853,19.02,null,-10.0,null,null,null,null,null,null,3.0],[7786742,19.36,null,-10.0,null,null,null,null,null,null,2.0],[7852189,18.97,null,-10.0,null,null,null,null,null,null,4.0],[7921865,18.93,null,-10.0,null,null,null,null,null,null,3.0]],"truck":"1033"},{"sr":18,"date":"2026-07-04","start":"16:27:51.309","startMs":59271309,"dos":[],"grade":null,"load":null,"batch":null,"batchToStart":null,"plant":200.0,"site":200.0,"doseL":null,"doseN":null,"rows":[[0,42.78,null,10.0,null,null,null,null,null,null,4.0],[66459,44.14,null,10.0,null,null,null,null,null,null,4.0],[136150,47.28,null,10.0,null,null,null,null,null,null,5.0],[202420,43.12,null,10.0,null,null,null,null,null,null,4.0],[272469,43.42,null,10.0,null,null,null,null,null,null,4.0],[338328,43.13,null,10.0,null,null,null,null,null,null,3.0],[403906,47.12,null,10.0,null,null,null,null,null,null,3.0],[474428,41.45,null,10.0,null,null,null,null,null,null,5.0],[545438,44.91,null,10.0,null,null,null,null,null,null,4.0],[611157,49.99,null,10.0,null,null,null,null,null,null,5.0],[681883,54.52,null,10.0,null,null,null,null,null,null,7.0],[747597,54.64,null,10.0,null,null,null,null,null,null,6.0],[817945,54.72,null,10.0,null,null,null,null,null,null,7.0],[883856,54.42,null,10.0,null,null,null,null,null,null,6.0],[954180,56.39,null,10.0,null,null,null,null,null,null,5.0],[1020015,52.4,null,10.0,null,null,null,null,null,null,8.0],[1090632,48.73,null,10.0,null,null,null,null,null,null,4.0],[1156632,48.43,null,10.0,null,null,null,null,null,null,4.0],[1226507,44.39,null,10.0,null,null,null,null,null,null,4.0],[1292368,47.82,null,10.0,null,null,null,null,null,null,3.0],[1362476,49.09,null,10.0,null,null,null,null,null,null,3.0],[1408111,null,null,null,null,null,null,null,48.04,null,null],[1428603,48.75,null,10.0,null,null,null,null,null,null,3.0],[1494176,48.88,null,10.0,null,null,null,null,null,null,3.0],[1564211,48.97,null,10.0,null,null,null,null,null,null,3.0],[1629914,50.25,null,10.0,null,null,null,null,null,null,3.0]],"truck":"1033"},{"sr":19,"date":"2026-07-06","start":"12:18:25.980","startMs":44305980,"dos":[],"grade":null,"load":null,"batch":null,"batchToStart":null,"plant":178.0,"site":177.0,"doseL":1.05,"doseN":4,"rows":[[0,41.64,null,10.0,null,null,null,null,null,null,1.0],[65860,42.01,null,10.0,null,null,null,null,null,null,2.0],[135818,44.53,null,10.0,null,null,null,null,null,null,1.0],[201362,43.58,null,10.0,null,null,null,null,null,null,1.0],[269644,44.07,null,10.0,null,null,null,null,null,null,1.0],[335243,43.11,null,10.0,null,null,null,null,null,null,1.0],[401416,46.96,null,10.0,null,null,null,null,null,null,1.0],[471915,45.89,null,10.0,null,null,null,null,null,null,1.0],[537978,49.64,null,10.0,null,null,null,null,null,null,2.0],[608702,56.87,null,10.0,null,null,null,null,null,null,3.0],[674420,55.81,null,10.0,null,null,null,null,null,null,2.0],[744728,57.1,null,10.0,null,null,null,null,null,null,3.0],[805280,null,null,null,null,null,null,null,49.97,null,null],[810379,55.87,null,10.0,null,null,null,null,null,null,3.0],[877229,55.9,null,10.0,null,null,null,null,null,null,2.0],[942926,57.09,null,10.0,null,null,null,null,null,null,3.0],[1008737,59.27,null,10.0,null,null,null,null,null,null,2.0],[1078831,59.24,null,10.0,null,null,null,null,null,null,3.0],[1144954,54.26,null,10.0,null,null,null,null,null,null,2.0],[1215478,52.36,null,10.0,null,null,null,null,null,null,2.0],[1281587,53.41,null,10.0,null,null,null,null,null,null,1.0],[1352292,55.65,null,10.0,null,null,null,null,null,null,1.0],[1423051,40.03,null,10.0,null,null,null,null,null,null,1.0],[1469055,null,50.75,null,null,null,null,null,null,null,null],[1488788,47.65,null,10.0,null,null,null,null,null,null,2.0],[1554981,55.26,null,10.0,null,null,null,null,null,null,1.0],[1625757,55.39,null,10.0,null,null,null,null,null,null,1.0]],"truck":"1033"},{"sr":20,"date":"2026-07-06","start":"15:46:40.921","startMs":56800921,"dos":[{"no":"20070097","mix":"G40 160-210","load":7.5,"batch":"15:28","plant":"020","dist":13.0}],"grade":40,"load":7.5,"batch":"15:28","batchToStart":18.7,"plant":192.0,"site":190.0,"doseL":0.5,"doseN":5,"rows":[[0,44.43,null,10.0,null,null,null,null,null,null,1.0],[65956,46.13,null,10.0,null,null,null,null,null,null,1.0],[131841,40.53,null,10.0,null,null,null,null,null,null,2.0],[198523,37.29,null,10.0,null,null,null,null,null,null,0.0],[264079,42.78,null,10.0,null,null,null,null,null,null,1.0],[330312,46.86,null,10.0,null,null,null,null,null,null,0.0],[400229,45.1,null,10.0,null,null,null,null,null,null,1.0],[465776,42.52,null,10.0,null,null,null,null,null,null,1.0],[533654,43.55,null,10.0,null,null,null,null,null,null,0.0],[599161,44.89,null,10.0,null,null,null,null,null,null,1.0],[665117,43.89,null,10.0,null,null,null,null,null,null,0.0],[731667,45.43,null,10.0,null,null,null,null,null,null,1.0],[797598,43.73,null,10.0,null,null,null,null,null,null,1.0],[863243,46.72,null,10.0,null,null,null,null,null,null,0.0],[929176,53.22,null,10.0,null,null,null,null,null,null,3.0],[994709,57.97,null,10.0,null,null,null,null,null,null,2.0],[1060366,57.89,null,10.0,null,null,null,null,null,null,3.0],[1127425,58.36,null,10.0,null,null,null,null,null,null,3.0],[1193224,56.74,null,10.0,null,null,null,null,null,null,3.0],[1258810,55.4,null,10.0,null,null,null,null,null,null,2.0],[1329185,57.98,null,10.0,null,null,null,null,null,null,3.0],[1339953,null,null,null,null,null,null,null,56.61,null,null],[1395299,52.92,null,10.0,null,null,null,null,null,null,3.0],[1465751,51.5,null,10.0,null,null,null,null,null,null,2.0],[1531916,51.85,null,10.0,null,null,null,null,null,null,1.0],[1601953,52.16,null,10.0,null,null,null,null,null,null,1.0],[1667568,52.35,null,10.0,null,null,null,null,null,null,2.0],[1734166,54.06,null,10.0,null,null,null,null,null,null,1.0],[1799926,51.52,null,10.0,null,null,null,null,null,null,1.0],[1865856,58.96,null,10.0,null,null,null,null,null,null,3.0],[1951283,27.69,null,-10.0,null,null,null,null,null,null,3.0],[2016715,47.49,null,10.0,null,null,null,null,null,null,1.0],[2027175,null,51.81,null,null,null,null,null,null,null,null],[2088469,50.72,null,10.0,null,null,null,null,null,null,1.0]],"truck":"1033"},{"sr":21,"date":"2026-10-24","start":"12:50:03.000","startMs":46203000,"dos":[{"no":"14514105","mix":"G40 125-175 OPC","load":12.0,"batch":"12:27","plant":"014","dist":10.0}],"grade":40,"load":12.0,"batch":"12:27","batchToStart":23.0,"plant":175.0,"site":160.0,"doseL":null,"doseN":null,"truck":"1038","plantNote":"175 at 12:51  water added","siteNote":"160 at 13:21","siteMs":1857000,"clockNote":"csv time + 2:30","sample":"5 min","rows":[[0,51.8425,null,null,null,null,null,null,null,null,1.5,4.782500000000001],[300000,63.06,null,null,null,null,null,null,null,null,3.25,4.785],[600000,70.12,null,null,null,null,null,null,null,null,4.4,4.788],[900000,74.835,null,null,null,null,null,null,null,null,5.25,4.78],[1200000,72.80199999999999,null,null,null,null,null,null,null,null,3.8,4.782],[1500000,71.42,null,null,null,null,null,null,null,null,4.0,4.782500000000001],[1800000,70.66,null,null,null,null,null,null,null,null,5.25,4.79],[2100000,71.276,null,null,null,null,null,null,null,null,4.8,4.79],[2400000,66.585,null,null,null,null,null,null,null,null,2.75,4.79],[2700000,70.20750000000001,null,null,null,null,null,null,null,null,1.5,4.7925],[3000000,46.2825,null,null,null,null,null,null,null,null,3.25,4.8],[3300000,66.53,null,null,null,null,null,null,null,null,1.25,4.8],[3600000,50.565,null,null,null,null,null,null,null,null,3.0,4.805],[3900000,61.589999999999996,null,null,null,null,null,null,null,null,1.2,4.802],[4200000,39.8125,null,null,null,null,null,null,null,null,4.25,4.8],[4500000,43.068,null,null,null,null,null,null,null,null,3.6,4.8],[4800000,46.67,null,null,null,null,null,null,null,null,4.25,4.7925],[5100000,43.075,null,null,null,null,null,null,null,null,4.25,4.78],[5400000,38.166,null,null,null,null,null,null,null,null,2.8,4.794],[5700000,35.8875,null,null,null,null,null,null,null,null,2.5,4.8]]},{"sr":22,"date":"2026-10-24","start":"12:10:24.000","startMs":43824000,"dos":[{"no":"14514098","mix":"G40 125-175 CIIB+7%SF 4HRTD","load":12.0,"batch":"11:55","plant":"014","dist":12.0}],"grade":40,"load":12.0,"batch":"11:55","batchToStart":15.4,"plant":175.0,"site":160.0,"doseL":null,"doseN":null,"truck":"1037","plantNote":"175 at 12:10  water added","siteNote":"160 at 13:15","siteMs":3876000,"clockNote":"csv time + 2:30","sample":"5 min","rows":[[0,100.3175,null,null,null,null,null,null,null,null,19.5,16.94],[300000,54.074,88.62,null,null,null,null,null,null,null,5.2,16.880000000000003],[600000,62.01,null,null,null,null,null,null,null,null,5.5,16.84],[900000,65.836,null,null,null,null,null,null,null,null,6.8,16.878],[1200000,59.2,null,null,null,null,null,null,null,null,4.0,16.8475],[1500000,63.2175,60.14,null,null,null,null,null,null,null,4.75,16.86],[1800000,63.653999999999996,null,null,null,null,null,null,null,null,5.2,16.898000000000003],[2100000,60.5025,null,null,null,null,null,null,null,null,3.5,16.94],[2400000,61.15,null,null,null,null,null,null,null,null,3.2,16.94],[2700000,60.695,61.58,null,null,null,null,null,null,null,4.0,16.94],[3000000,61.174,null,null,null,null,null,null,null,null,2.8,16.94],[3300000,59.065000000000005,null,null,null,null,null,null,null,null,3.5,16.9125],[3600000,57.695,null,null,null,null,null,null,null,null,2.5,16.94],[3900000,63.834,58.1,null,null,null,null,null,null,null,3.6,16.94],[4200000,62.2725,null,null,null,null,null,null,null,null,3.0,16.94],[4500000,60.964,null,null,null,null,null,null,null,null,2.0,16.94],[4800000,60.75,null,null,null,null,null,null,null,null,2.5,16.94],[5100000,62.565999999999995,61.42,null,null,null,null,null,null,null,2.0,16.94],[5400000,56.792500000000004,null,null,null,null,null,null,null,null,1.5,16.935000000000002],[5700000,63.42999999999999,null,null,null,null,null,null,null,null,2.4,16.94],[6000000,79.6275,null,null,null,null,null,null,null,null,8.75,16.915],[6300000,43.167500000000004,76.27,null,null,null,null,null,null,null,8.5,16.94],[6600000,21.974,null,null,null,null,null,null,null,null,8.8,16.94],[6900000,34.2425,null,null,null,null,null,null,null,null,5.0,16.7875],[7200000,34.988,null,null,null,null,null,null,null,null,4.8,16.932],[7500000,36.682500000000005,35.75,null,null,null,null,null,null,null,5.5,16.935000000000002],[7800000,35.125,null,null,null,null,null,null,null,null,4.5,16.92],[8100000,35.292,null,null,null,null,null,null,null,null,3.4,16.907999999999998],[8400000,31.2825,null,null,null,null,null,null,null,null,3.5,16.935000000000002]]},{"sr":23,"date":"2026-10-24","start":"11:30:46.000","startMs":41446000,"dos":[{"no":"14514096","mix":"G40 170-225 IIIA 36%GGBS 4HRTD","load":11.5,"batch":"11:12","plant":"014","dist":13.0}],"grade":40,"load":11.5,"batch":"11:12","batchToStart":18.8,"plant":210.0,"site":195.0,"doseL":null,"doseN":null,"truck":"1033","plantNote":"210 at 11:30  water added","siteNote":"195 at 12:10","siteMs":2354000,"clockNote":"csv time + 2:30","sample":"1 min","rows":[[0,39.86,null,null,null,null,null,null,null,null,2.0,null,"TRANSIT",null,null],[66000,38.41,null,null,null,null,null,null,null,null,3.0,null,"TRANSIT",null,null],[133000,37.95,null,null,null,null,null,null,null,null,2.0,null,"TRANSIT",null,null],[203000,43.85,null,null,null,null,null,null,null,null,3.0,null,"TRANSIT",null,null],[275000,43.63,null,null,null,null,null,null,null,null,4.0,null,"TRANSIT",null,null],[341000,44.5,null,null,null,null,null,null,null,null,2.0,null,"TRANSIT",null,null],[411000,45.85,null,null,null,null,null,null,null,null,4.0,null,"TRANSIT",null,null],[477000,43.22,null,null,null,null,null,null,null,null,5.0,null,"LOADING",null,null],[543000,41.97,null,null,null,null,null,null,null,null,2.0,null,"LOADING",null,null],[609000,44.31,null,null,null,null,null,null,null,null,4.0,null,"LOADING",null,null],[675000,43.82,null,null,null,null,null,null,null,null,3.0,null,"TRANSIT",null,null],[741000,44.05,null,null,null,null,null,null,null,null,3.0,null,"TRANSIT",null,null],[811000,45.35,null,null,null,null,null,null,null,null,3.0,null,"TRANSIT",null,null],[877000,44.79,null,null,null,null,null,null,null,null,3.0,null,"TRANSIT",null,null],[947000,52.72,null,null,null,null,null,null,null,null,4.0,null,"TRANSIT",null,null],[1013000,47.78,null,null,null,null,null,null,null,null,4.0,null,"TRANSIT",null,null],[1084000,42.51,null,null,null,null,null,null,null,null,2.0,null,"TRANSIT",null,null],[1159000,48.29,null,null,null,null,null,null,null,null,2.0,null,"TRANSIT",null,null],[1176000,null,null,null,null,null,null,null,49.1,null,null,null,null,null,null],[1303000,46.56,null,null,null,null,null,null,null,null,2.0,null,"TRANSIT",null,null],[1369000,53.45,null,null,null,null,null,null,null,null,4.0,null,"TRANSIT",null,null],[1436000,83.11,null,null,null,null,null,null,null,null,9.0,null,"LOADING",null,null],[1502000,72.4,null,null,null,null,null,null,null,null,10.0,null,"LOADING",null,null],[1578000,73.14,null,null,null,null,null,null,null,null,7.0,null,"LOADING",null,null],[1643000,66.81,null,null,null,null,null,null,null,null,8.0,null,"LOADING",null,null],[1714000,61.93,null,null,null,null,null,null,null,null,8.0,null,"LOADING",null,null],[1780000,50.39,null,null,null,null,null,null,null,null,6.0,null,"LOADING",null,null],[1839000,null,60.96,null,null,null,null,null,null,null,null,null,null,null,null],[1851000,50.64,null,null,null,null,null,null,null,null,5.0,null,"LOADING",null,null],[1922000,51.44,null,null,null,null,null,null,null,null,5.0,null,"LOADING",null,null],[1988000,51.11,null,null,null,null,null,null,null,null,4.0,null,"TRANSIT",null,null],[2069000,54.16,null,null,null,null,null,null,null,null,5.0,null,"LOADING",null,null],[2139000,67.92,null,null,null,null,null,null,null,null,5.0,null,"LOADING",null,null],[2206000,56.46,null,null,null,null,null,null,null,null,6.0,null,"LOADING",null,null],[2276000,41.93,null,null,null,null,null,null,null,null,2.0,null,"TRANSIT",null,null],[2347000,40.71,null,null,null,null,null,null,null,null,0.0,null,"TRANSIT",null,null],[2413000,41.12,null,null,null,null,null,null,null,null,1.0,null,"TRANSIT",null,null],[2483000,42.15,null,null,null,null,null,null,null,null,1.0,null,"TRANSIT",null,null],[2548000,42.74,null,null,null,null,null,null,null,null,1.0,null,"TRANSIT",null,null],[2563000,null,42.19,null,null,null,null,null,null,null,null,null,null,null,null],[2615000,46.59,null,null,null,null,null,null,null,null,2.0,null,"TRANSIT",null,null],[2685000,17.91,null,null,null,null,null,null,null,null,5.0,null,"IDLE",null,null],[2750000,18.84,null,null,null,null,null,null,null,null,4.0,null,"IDLE",null,null],[2816000,19.34,null,null,null,null,null,null,null,null,4.0,null,"IDLE",null,null],[2882000,19.23,null,null,null,null,null,null,null,null,5.0,null,"IDLE",null,null],[2952000,19.25,null,null,null,null,null,null,null,null,5.0,null,"IDLE",null,null],[2972000,null,null,null,null,0.0,null,0.0,null,null,null,null,null,379.0,160.96],[3017000,19.12,null,null,null,null,null,null,null,null,4.0,null,"IDLE",null,null],[3087000,17.65,null,null,null,null,null,null,null,null,3.0,null,"IDLE",null,null],[3152000,17.61,null,null,null,null,null,null,null,null,3.0,null,"IDLE",null,null],[3218000,17.64,null,null,null,null,null,null,null,null,4.0,null,"IDLE",null,null],[3288000,17.72,null,null,null,null,null,null,null,null,2.0,null,"IDLE",null,null],[3353000,17.67,null,null,null,null,null,null,null,null,2.0,null,"IDLE",null,null],[3423000,17.46,null,null,null,null,null,null,null,null,2.0,null,"IDLE",null,null],[3493000,17.97,null,null,null,null,null,null,null,null,2.0,null,"IDLE",null,null],[3559000,23.23,null,null,null,null,null,null,null,null,2.0,null,"IDLE",null,null],[3629000,27.12,null,null,null,null,null,null,null,null,3.0,null,"IDLE",null,null],[3694000,26.67,null,null,null,null,null,null,null,null,2.0,null,"IDLE",null,null],[3764000,25.38,null,null,null,null,null,null,null,null,1.0,null,"IDLE",null,null],[3829000,26.97,null,null,null,null,null,null,null,null,1.0,null,"IDLE",null,null],[3899000,26.74,null,null,null,null,null,null,null,null,2.0,null,"IDLE",null,null]]}];
+</script>
+<script>
+// row layout: [ms, avg, cur, dir, dose, doseTrip, doseCount, manual, master, pump, rpm]
+var ENGINE = (function () {
+  var F1C = { K: 2.24, Kt: -0.237, theta: 2.50, rpmRef: 2.0, win: 3.0, minP: 8.0, loadRpm: 8, empty: 0.6 };
+  var F2C = { K: 2454, Kt: 0, alpha: 0.3 };
+  var F3C = { K: 2480, Kt: -0.33, alpha: 0.3 };
+
+  function median(a) {
+    if (!a.length) return null;
+    var s = a.slice().sort(function (x, y) { return x - y; }), n = s.length;
+    return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+  }
+
+  // Formula 1: grade density, pressure corrected to 2 rpm, P0 = median over first 3 min of transit,
+  // P = median over the last 3 min, t = minutes in transit (same phases as the fitted dataset)
+  function runF1(rows, inp) {
+    var rho = 2.30 + 0.003 * inp.G, I = 0.5 * rho * inp.V * inp.R * inp.R, KI = F1C.K / I;
+    var phase = 'waiting', t0 = null, P0 = null, P0phase = null, tLast = null, pcs = [], ref = [], out = [];
+    function state() {
+      var t = tLast === null ? 0 : tLast - t0, Pc = null, dP = null, sp = inp.S0;
+      if (P0 !== null) {
+        var w = pcs.filter(function (x) { return x.t >= tLast - F1C.win; }).map(function (x) { return x.pc; });
+        Pc = median(w); dP = (Pc - P0) / P0; sp = inp.S0 / (1 + KI * dP);
+      }
+      return { phase: phase, t: t, t0: t0, tl: tLast, P0: P0, P: Pc, dP: dP, pp: sp - inp.S0, tp: F1C.Kt * t, S: sp + F1C.Kt * t, I: I, rho: rho, KI: KI };
+    }
+    var cur = state();
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i], tm = r[0] / 60000, avg = r[1], rpm = r[10], dir = r[3] === null ? 10 : r[3];
+      if (avg === null && rpm === null) { out.push(cur); continue; }
+      var ok = avg !== null && rpm !== null && avg > F1C.minP;
+      if (phase === 'waiting') {
+        if (ok && rpm < F1C.loadRpm && dir !== -10) { phase = 'reference'; t0 = tm; }
+        else { out.push(cur); continue; }
+      }
+      if (phase === 'discharge') { out.push(cur); continue; }
+      if (dir === -10) { phase = 'discharge'; cur = Object.assign({}, cur, { phase: phase }); out.push(cur); continue; }
+      var pc = avg !== null && rpm !== null ? avg - F1C.theta * (rpm - F1C.rpmRef) : null;
+      if (pc !== null) pcs.push({ t: tm, pc: pc });
+      if (!ok) { tLast = tm; cur = state(); out.push(cur); continue; }
+      if (phase === 'reference') {
+        ref.push(pc);
+        if (tm - t0 >= F1C.win) {
+          // formula P0: readings within the first 3 min; phase P0: every reference reading (sets the empty-drum limit)
+          P0 = median(pcs.filter(function (x) { return x.t <= t0 + F1C.win; }).map(function (x) { return x.pc; }));
+          P0phase = median(ref);
+          phase = 'transit';
+        }
+        tLast = tm; cur = state(); out.push(cur); continue;
+      }
+      if (pc < F1C.empty * P0phase) { pcs.pop(); phase = 'discharge'; cur = Object.assign({}, cur, { phase: phase }); out.push(cur); continue; }
+      tLast = tm; cur = state(); out.push(cur);
+    }
+    return out;
+  }
+
+  // Formulas 2 and 3: P0 = first master pressure, P = average pressure smoothed 0.3 new / 0.7 old,
+  // only readings in transit direction (or no direction channel) at 0 to 2 rpm, stops at the first unload reading, t = minutes since start
+  // first reading where Formula 1's phases see unloading (unload direction, or pressure below 60 % of its start)
+  function unloadIndex(rows) {
+    var ph = runF1(rows, { S0: 100, G: 40, R: 1, V: 1 });
+    for (var i = 0; i < ph.length; i++) if (ph[i].phase === 'discharge') return i;
+    return -1;
+  }
+
+  // Formulas 2 and 3: P0 = first master pressure, P = average pressure smoothed 0.3 new / 0.7 old,
+  // only readings in transit direction (or no direction channel) at 0 to 2 rpm, t = minutes since start,
+  // value held from the first unload reading (same unload check as Formula 1)
+  function runF23(rows, inp, C) {
+    var I = 0.5 * inp.rho * inp.V * inp.R * inp.R, KI = C.K / I, uIdx = unloadIndex(rows);
+    var Pm = null, tM = null, P = null, tUsed = null, stopped = false, held = null, out = [];
+    for (var j = 0; j < rows.length; j++) if (rows[j][8] !== null) { Pm = rows[j][8]; tM = rows[j][0]; break; }
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i], tm = r[0] / 60000, avg = r[1], rpm = r[10], dir = r[3];
+      var used = false;
+      if (!stopped && uIdx >= 0 && i >= uIdx) stopped = true;
+      if (stopped && held) { out.push(Object.assign({}, held, { phase: 'unload', used: false })); continue; }
+      if (!stopped && Pm !== null && r[0] >= tM) {
+        if (dir === -10 && avg !== null && P !== null) stopped = true;
+        else if (avg !== null && rpm !== null && (dir === 10 || dir === null) && rpm >= 0 && rpm <= 2) {   // no direction channel: treated as transit, as in Formula 1
+          P = P === null ? avg : C.alpha * avg + (1 - C.alpha) * P; tUsed = tm; used = true;
+        }
+      }
+      var s;
+      if (P === null) {
+        s = { phase: Pm === null ? 'no_master' : (r[0] < tM ? 'pre_master' : 'gate'), t: tm, P0: Pm, P: null, dP: null, pp: 0, tp: C.Kt * tm, S: inp.S0 + C.Kt * tm };
+      } else {
+        var dP = (P - Pm) / Pm, sp = inp.S0 / (1 + KI * dP);
+        s = { phase: 'live', t: tUsed, P0: Pm, P: P, dP: dP, pp: sp - inp.S0, tp: C.Kt * tUsed, S: sp + C.Kt * tUsed };
+      }
+      if (stopped) s.phase = 'unload';
+      s.I = I; s.KI = KI; s.used = used; s.tM = tM;
+      held = s; out.push(s);
+    }
+    return out;
+  }
+
+  return { F1C: F1C, F2C: F2C, F3C: F3C, median: median, runF1: runF1,
+    runF2: function (rows, inp) { return runF23(rows, inp, F2C); },
+    runF3: function (rows, inp) { return runF23(rows, inp, F3C); } };
+})();
+
+</script>
+<script>
+(function () {
+  var TR = TRIPS, E = ENGINE;
+  var SPEEDS = [1, 10, 30, 60, 120, 300, 600];
+  function $(s) { return document.querySelector(s); }
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function clock(ms) { var s = Math.floor(ms / 1000); return pad(Math.floor(s / 3600) % 24) + ':' + pad(Math.floor(s / 60) % 60) + ':' + pad(s % 60); }
+  function clockMs(ms) { return clock(ms) + '.' + String(Math.round(ms) % 1000).padStart(3, '0'); }
+  function el(ms) { var s = Math.floor(ms / 1000); return pad(Math.floor(s / 60)) + ':' + pad(s % 60); }
+  function raw(v) { return v === null || v === undefined ? 'na' : String(Number(v.toFixed(6))); }
+  function fx(v, d) { return v === null || v === undefined || !isFinite(v) ? 'na' : v.toFixed(d); }
+  function sg(v, d) { if (v === null || v === undefined || !isFinite(v)) return 'na'; var a = Math.abs(v).toFixed(d); return (Number(a) === 0 ? '' : v > 0 ? '+' : '−') + a; }
+  function grp(v) { return v === null || !isFinite(v) ? 'na' : Math.round(v).toLocaleString('en-US'); }
+  function mon(d) { var m = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']; var p = d.split('-'); return Number(p[2]) + ' ' + m[Number(p[1]) - 1]; }
+
+  var MODS = [
+    { id: 'f1', tag: 'f1', nm: 'with time  density from grade', run: E.runF1, iu: 't·m²', idig: 2,
+      eq: 'S_live = S0 / (1 + K/I_batch · ΔP) − 0.237·t\nρG = 2.30 + 0.003·G     I_batch = ½·ρG·V·R²\nPc = P − 2.50·(rpm − 2)  ΔP = (Pc − P0) / P0\n<span class="c">// P0 median Pc first 3 min of transit\n// P  median Pc last 3 min   t  min in transit</span>',
+      cst: ['K 2.24 t·m²', 'K_time −0.237 mm/min'],
+      inputs: [['S0', 'plant_slump', 'mm'], ['G', 'grade', 'G'], ['R', 'drum_radius', 'm'], ['V', 'volume', 'm³']],
+      plab: 'Pc readings', pline: 'Pc 3 min median' },
+    { id: 'f2', tag: 'f2', nm: 'without time', run: E.runF2, iu: 'kg·m²', idig: 0,
+      eq: 'S_live = S0 / (1 + K/I_batch · (P − P0)/P0)\nI_batch = ½·ρ·V·R²\n\n<span class="c">// P0 master pressure\n// P  avg pressure ema 0.3  0 to 2 rpm  transit dir</span>',
+      cst: ['K 2,454 kg·m²', 'no time term'],
+      inputs: [['S0', 'plant_slump', 'mm'], ['rho', 'density', 'kg/m³'], ['R', 'drum_radius', 'm'], ['V', 'volume', 'm³']],
+      plab: 'avg pressure', pline: 'P ema' },
+    { id: 'f3', tag: 'f3', nm: 'with time  fixed density', run: E.runF3, iu: 'kg·m²', idig: 0,
+      eq: 'S_live = S0 / (1 + K/I_batch · (P − P0)/P0) − 0.33·t\nI_batch = ½·ρ·V·R²\n\n<span class="c">// P0 master pressure   t  min since start\n// P  avg pressure ema 0.3  0 to 2 rpm  transit dir</span>',
+      cst: ['K 2,480 kg·m²', 'K_TIME −0.33 mm/min'],
+      inputs: [['S0', 'plant_slump', 'mm'], ['rho', 'density', 'kg/m³'], ['R', 'drum_radius', 'm'], ['V', 'volume', 'm³']],
+      plab: 'avg pressure', pline: 'P ema' }
+  ];
+
+  var S = { k: 0, T: 0, playing: true, speed: 60, dur: 1, idx: -1, lastFrame: null };
+
+  // ---------- static structure ----------
+  var sp = $('#speeds');
+  SPEEDS.forEach(function (v) {
+    var b = document.createElement('button'); b.className = 'tbtn'; b.textContent = v + 'x'; b.dataset.s = v;
+    b.setAttribute('aria-label', 'speed ' + v + ' times'); b.onclick = function () { S.speed = v; paintSpeeds(); };
+    sp.appendChild(b);
+  });
+  function paintSpeeds() { sp.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', Number(b.dataset.s) === S.speed); }); }
+
+  var tripsEl = $('#trips');
+  TR.forEach(function (t, k) {
+    var b = document.createElement('button'); b.className = 'trip'; b.id = 'trip-' + t.sr;
+    var noDo = !t.dos.length, noM = !t.rows.some(function (r) { return r[8] !== null; }), other = t.truck && t.truck !== '1033';
+    var flags = [other ? 'truck ' + t.truck : '', noDo ? 'no do' : '', noM ? 'no master' : ''].filter(Boolean);
+    b.innerHTML = '<span class="n">' + pad(t.sr) + '</span><span class="d">' + mon(t.date) + '  ' + t.start.slice(0, 5) + '</span>' +
+      '<span class="s">' + fx(t.plant, 0) + ' → ' + (t.site === null ? 'na' : fx(t.site, 0)) + '</span>' +
+      (flags.length ? '<span class="s flag">' + flags.join('  ') + '</span>' : '');
+    b.onclick = function () { loadTrip(k); };
+    tripsEl.appendChild(b);
+  });
+
+  var CH = [['avg', 'avg_pressure', 'bar'], ['cur', 'current_pressure', 'bar'], ['master', 'master_pressure', 'bar'], ['rpm', 'rpm', ''],
+            ['dir', 'direction', ''], ['pump', 'pump_status', ''], ['dose', 'dosing', ''], ['row', 'reading', '']];
+  $('#ch').innerHTML = CH.map(function (c) { return '<div><span class="k">' + c[1] + (c[2] ? ' <span class="u">' + c[2] + '</span>' : '') + '</span><span class="v" id="c-' + c[0] + '">na</span><span class="at" id="a-' + c[0] + '"> </span></div>'; }).join('');
+
+  var modsEl = $('#mods');
+  MODS.forEach(function (m) {
+    var s = document.createElement('section'); s.className = 'mod'; s.id = m.id;
+    s.innerHTML =
+      '<div class="mh"><span class="tag">' + m.tag + '</span><span class="nm">' + m.nm + '</span></div>' +
+      '<pre class="eq">' + m.eq + '</pre>' +
+      '<div class="inp">' + m.inputs.map(function (i) {
+        return '<div class="f"><label for="' + m.id + '-' + i[0] + '">' + i[1] + ' <span class="u">' + i[2] + '</span></label>' +
+          '<input id="' + m.id + '-' + i[0] + '" type="number" step="any" inputmode="decimal"><span class="src" id="' + m.id + '-' + i[0] + '-src"></span></div>';
+      }).join('') + '</div>' +
+      '<div class="cst"><span>' + m.cst.join('</span><span>') + '</span><span id="' + m.id + '-der"></span><button id="' + m.id + '-reset">reset to data</button></div>' +
+      '<div class="big"><span class="sv" id="' + m.id + '-S">na</span><span class="u">mm</span><span class="dv" id="' + m.id + '-d"></span></div>' +
+      '<div class="st" id="' + m.id + '-st"></div>' +
+      '<div class="kv" id="' + m.id + '-kv"></div>' +
+      '<div class="lg"><span><i style="border-color:var(--slump)"></i>S_live mm</span><span><i style="border-color:var(--press)"></i>' + m.pline + ' bar</span>' +
+      '<span><i class="d" style="border-color:var(--press)"></i>P0</span><span><i style="border-color:var(--press);width:4px;border-top-width:4px;border-radius:2px"></i>' + m.plab + '</span></div>' +
+      '<div class="cw" id="' + m.id + '-cw"><svg id="' + m.id + '-svg" role="img" aria-label="' + m.tag + ' slump and pressure over time"></svg></div>' +
+      '<div class="fin" id="' + m.id + '-fin"></div>';
+    modsEl.appendChild(s);
+    m.inputs.forEach(function (i) {
+      var inp = s.querySelector('#' + m.id + '-' + i[0]);
+      inp.addEventListener('input', function () {
+        var v = parseFloat(inp.value);
+        var okv = isFinite(v) && v > 0 && (i[0] !== 'S0' || v <= 400) && (i[0] !== 'R' || v < 5) && (i[0] !== 'V' || v <= 20);
+        inp.classList.toggle('bad', !okv);
+        if (!okv) return;
+        m.vals[i[0]] = v; m.src[i[0]] = 'edited'; paintSrc(m); compute(m); draw(true);
+      });
+    });
+    s.querySelector('#' + m.id + '-reset').onclick = function () { setDefaults(m); compute(m); draw(true); };
+  });
+
+  // ---------- trip loading ----------
+  function setDefaults(m) {
+    var t = TR[S.k];
+    m.vals = { S0: t.plant, V: t.load !== null ? t.load : 12, R: 1.22 };
+    m.src = { S0: 'sheet', V: t.load !== null ? 'do ' + t.dos.map(function (d) { return d.no; }).join(' + ') : 'default  no do', R: 'default' };
+    if (m.id === 'f1') { m.vals.G = t.grade !== null ? t.grade : 40; m.src.G = t.grade !== null ? 'do  ' + t.dos[0].mix.split(' ')[0] : 'default  no do'; }
+    else { m.vals.rho = m.id === 'f2' ? 2400 : 2425; m.src.rho = m.id === 'f2' ? 'standard density' : 'set density'; }
+    m.inputs.forEach(function (i) { var inp = document.getElementById(m.id + '-' + i[0]); inp.value = m.vals[i[0]]; inp.classList.remove('bad'); });
+    paintSrc(m);
+  }
+  function paintSrc(m) {
+    m.inputs.forEach(function (i) { var e = document.getElementById(m.id + '-' + i[0] + '-src'); e.textContent = m.src[i[0]]; e.classList.toggle('def', /no do/.test(m.src[i[0]])); });
+  }
+  function compute(m) {
+    var t = TR[S.k], v = m.vals;
+    m.st = m.run(t.rows, m.id === 'f1' ? { S0: v.S0, G: v.G, R: v.R, V: v.V } : { S0: v.S0, rho: v.rho, R: v.R, V: v.V });
+    m.freeze = null;
+    for (var i = 0; i < m.st.length; i++) { var ph = m.st[i].phase; if (ph === 'discharge' || ph === 'unload') { m.freeze = i; break; } }
+    // fixed axes for the whole trip
+    var sv = [v.S0]; if (t.site !== null) sv.push(t.site);
+    m.st.forEach(function (s) { if (isFinite(s.S)) sv.push(s.S); });
+    m.sAx = axis(Math.min.apply(null, sv), Math.max.apply(null, sv), 5);
+    var pv = [];
+    t.rows.forEach(function (r) { var p = pval(m, r); if (p !== null) pv.push(p); });
+    m.st.forEach(function (s) { if (s.P !== null && isFinite(s.P)) pv.push(s.P); if (s.P0 !== null && isFinite(s.P0)) pv.push(s.P0); });
+    m.pAx = pv.length ? axis(Math.min.apply(null, pv), Math.max.apply(null, pv), 5) : axis(0, 100, 5);
+    if (m.id === 'f1') document.getElementById('f1-der').textContent = 'ρG ' + (2.30 + 0.003 * v.G).toFixed(3) + ' t/m³';
+  }
+  function pval(m, r) {
+    if (r[1] === null) return null;
+    if (m.id === 'f1') return r[10] === null ? null : r[1] - E.F1C.theta * (r[10] - E.F1C.rpmRef);
+    return r[1];
+  }
+  function axis(lo, hi, n) {
+    if (hi - lo < 1e-9) { lo -= 5; hi += 5; }
+    var span = hi - lo, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), step = mag;
+    [1, 2, 2.5, 5, 10].some(function (f) { step = f * mag; return span / step <= n; });
+    var a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step;
+    if (a === lo) a -= step; if (b === hi) b += step;
+    var ticks = []; for (var x = a; x <= b + step / 1e6; x += step) ticks.push(+x.toFixed(6));
+    return { lo: a, hi: b, ticks: ticks };
+  }
+
+  function loadTrip(k) {
+    S.k = k; var t = TR[k];
+    S.dur = t.rows[t.rows.length - 1][0]; S.T = 0; S.idx = -1; S.playing = true;
+    // last value of every channel at each reading
+    var L = { avg: null, cur: null, master: null, rpm: null, dir: null, pump: null, dose: null, dcount: null, at: {} };
+    S.lv = t.rows.map(function (r) {
+      var c = { avg: L.avg, cur: L.cur, master: L.master, rpm: L.rpm, dir: L.dir, pump: L.pump, dose: L.dose, dcount: L.dcount, at: Object.assign({}, L.at) };
+      [['avg', 1], ['cur', 2], ['dir', 3], ['dose', 4], ['dcount', 6], ['master', 8], ['pump', 9], ['rpm', 10]].forEach(function (p) {
+        if (r[p[1]] !== null) { c[p[0]] = r[p[1]]; c.at[p[0]] = r[0]; }
+      });
+      L = c; return c;
+    });
+    // unload bands from readings in the unload direction
+    S.bands = [];
+    t.rows.forEach(function (r, i) { if (r[3] === -10) { var nx = t.rows.slice(i + 1).find(function (q) { return q[1] !== null; }); S.bands.push([r[0], nx ? nx[0] : r[0] + 60000]); } });
+    S.doses = t.rows.filter(function (r) { return r[4] !== null || r[6] !== null; }).map(function (r) { return r[0]; });
+    var mrow = t.rows.find(function (r) { return r[8] !== null; });
+    S.tM = mrow ? mrow[0] : null;
+    S.noDir = !t.rows.some(function (r) { return r[3] !== null; });
+    MODS.forEach(function (m) { setDefaults(m); compute(m); });
+    document.querySelectorAll('.trip').forEach(function (b, j) { b.classList.toggle('on', j === k); b.setAttribute('aria-pressed', j === k); });
+    var scrub = $('#scrub'); scrub.max = S.dur; scrub.value = 0;
+    paintMeta(); paintPlay(); draw(true);
+  }
+
+  function paintMeta() {
+    var t = TR[S.k], d = t.dos;
+    var items = [
+      ['trip', pad(t.sr)], ['truck', t.truck || '1033'], ['date', t.date], ['start', t.start + (t.clockNote ? '  ' + t.clockNote : '')],
+      ['do', d.length ? d.map(function (x) { return x.no; }).join(' + ') : 'na'],
+      ['mix', d.length ? d.map(function (x) { return x.mix; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(' + ') : 'na'],
+      ['load', t.load !== null ? fx(t.load, 2) + ' m³' : 'na'],
+      ['batch', t.batch || 'na'], ['batch_to_start', t.batchToStart !== null ? fx(t.batchToStart, 1) + ' min' : 'na'],
+      ['plant', t.plantNote ? t.plantNote : fx(t.plant, 0) + ' mm'], ['site', t.siteNote ? t.siteNote : t.site !== null ? fx(t.site, 0) + ' mm' : 'na'],
+      ['dosing', t.doseL !== null ? t.doseL + ' L  x' + t.doseN : 'none'],
+      ['master', S.tM !== null ? raw(t.rows.find(function (r) { return r[8] !== null; })[8]) + ' bar at ' + fx(S.tM / 60000, 1) + ' min' : 'not in data'],
+      ['readings', String(t.rows.length) + (t.sample ? '  every ' + t.sample : '')], ['length', el(S.dur)]
+    ];
+    if (!t.rows.some(function (r) { return r[3] !== null; })) items.push(['direction', 'not in data']);
+    if (t.truck && t.truck !== '1033') items.push(['note', 'K values fitted on truck 1033']);
+    $('#meta').innerHTML = items.map(function (x) { return '<div><span class="k">' + x[0] + '</span> ' + x[1] + '</div>'; }).join('');
+  }
+  function paintPlay() { $('#play').textContent = S.playing ? '❚❚ pause' : '▶ play'; }
+
+  // ---------- frame ----------
+  function idxAt(T) {
+    var rows = TR[S.k].rows, lo = 0, hi = rows.length - 1, ans = -1;
+    while (lo <= hi) { var mid = (lo + hi) >> 1; if (rows[mid][0] <= T) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+    return ans;
+  }
+
+  function feedLine(r, t) {
+    var p = [];
+    if (r[1] !== null) p.push('avg ' + raw(r[1]));
+    if (r[3] !== null) p.push(r[3] === -10 ? '<span class="x">dir ' + raw(r[3]) + '</span>' : 'dir +' + raw(r[3]));
+    if (r[10] !== null) p.push('rpm ' + raw(r[10]));
+    if (r[2] !== null) p.push('cur ' + raw(r[2]));
+    if (r[8] !== null) p.push('<span class="m">master ' + raw(r[8]) + '</span>');
+    if (r[4] !== null) p.push('<span class="m">dose ' + raw(r[4]) + ' L</span>');
+    if (r[5] !== null) p.push('dose_trip ' + raw(r[5]));
+    if (r[6] !== null) p.push('<span class="m">dose_count ' + raw(r[6]) + '</span>');
+    if (r[7] !== null) p.push('manual ' + raw(r[7]));
+    if (r[9] !== null) p.push('pump ' + raw(r[9]));
+    if (r[11] !== null && r[11] !== undefined) p.push('tank ' + raw(r[11]));
+    if (r[12] !== null && r[12] !== undefined) p.push('<span class="m">event ' + r[12] + '</span>');
+    if (r[13] !== null && r[13] !== undefined) p.push('<span class="m">total_trip ' + raw(r[13]) + '</span>');
+    if (r[14] !== null && r[14] !== undefined) p.push('flowmeter ' + raw(r[14]));
+    return '<div><span class="ts">' + clockMs(t.startMs + r[0]) + '</span>' + p.join('  ') + '</div>';
+  }
+
+  function draw(force) {
+    var t = TR[S.k], idx = idxAt(S.T), changed = force || idx !== S.idx;
+    var past = t.siteMs !== undefined && t.siteMs !== null && S.T >= t.siteMs;
+    if (past !== S.past) { changed = true; S.past = past; }
+    S.idx = idx;
+    $('#clk').textContent = clock(t.startMs + S.T);
+    $('#el').textContent = el(S.T) + ' / ' + el(S.dur);
+    $('#scrub').value = S.T;
+    $('#rowc').textContent = (idx + 1) + ' / ' + t.rows.length;
+    if (changed) {
+      var c = idx >= 0 ? S.lv[idx] : { at: {} };
+      function age(key) { return c.at[key] === undefined ? ' ' : 'at ' + clock(t.startMs + c.at[key]); }
+      $('#c-avg').textContent = raw(c.avg); $('#a-avg').textContent = age('avg');
+      $('#c-cur').textContent = raw(c.cur); $('#a-cur').textContent = age('cur');
+      $('#c-master').textContent = raw(c.master); $('#a-master').textContent = c.master === null || c.master === undefined ? (S.tM === null ? 'not in data' : 'pending') : age('master');
+      $('#c-rpm').textContent = raw(c.rpm); $('#a-rpm').textContent = age('rpm');
+      $('#c-dir').textContent = c.dir === null || c.dir === undefined ? (S.noDir ? 'not in data' : 'na') : (c.dir === -10 ? '-10 unload' : '+' + c.dir + ' transit');
+      $('#c-dir').style.color = c.dir === -10 ? 'var(--bad)' : '';
+      $('#a-dir').textContent = age('dir');
+      $('#c-pump').textContent = raw(c.pump); $('#a-pump').textContent = age('pump');
+      $('#c-dose').textContent = c.dose === null || c.dose === undefined ? 'none' : c.dose + ' L  x' + raw(c.dcount); $('#a-dose').textContent = age('dose');
+      $('#c-row').textContent = (idx + 1) + ' / ' + t.rows.length; $('#a-row').textContent = idx >= 0 ? 'at ' + clockMs(t.startMs + t.rows[idx][0]) : ' ';
+      var lines = []; for (var i = Math.max(0, idx - 7); i <= idx; i++) lines.push(feedLine(t.rows[i], t));
+      $('#feed').innerHTML = lines.join('');
+    }
+    MODS.forEach(function (m) { drawMod(m, idx, changed); });
+  }
+
+  function stateAt(m, idx) {
+    if (idx >= 0) return m.st[idx];
+    return { phase: 'start', t: 0, P0: null, P: null, dP: null, pp: 0, tp: 0, S: m.vals.S0, I: m.st[0].I, KI: m.st[0].KI };
+  }
+
+  function status(m, s, idx) {
+    var t = TR[S.k];
+    if (m.id === 'f1') {
+      if (s.phase === 'start' || s.phase === 'waiting') return '<b>waiting</b>  plant side mixing or no pressure';
+      if (s.phase === 'reference') { var w = idx >= 0 ? Math.min(3, t.rows[idx][0] / 60000 - s.t0) : 0; return '<b>reference</b>  setting P0  ' + fx(w, 1) + ' / 3 min'; }
+      if (s.phase === 'transit') return '<b>transit</b>  live';
+      return '<b>unload</b>  value held';
+    }
+    if (s.phase === 'start') return '<b>start</b>';
+    if (s.phase === 'no_master') return '<b>no master pressure in data</b>  ' + (m.id === 'f2' ? 'plant slump held' : 'time term only');
+    if (s.phase === 'pre_master') return '<b>waiting for master</b>  ' + (m.id === 'f2' ? 'plant slump held' : 'time term only');
+    if (s.phase === 'gate') return '<b>master set</b>  waiting for a 0 to 2 rpm reading';
+    if (s.phase === 'live') return '<b>live</b>' + (s.used ? '  reading used' : '  reading skipped by gate');
+    return '<b>unload</b>  value held';
+  }
+
+  // where the prediction is compared with the site cone test: its recorded time, else unload, else trace end
+  function cmpPoint(m, t) {
+    if (t.siteMs !== undefined && t.siteMs !== null) {
+      var j = -1; t.rows.forEach(function (r, i) { if (r[0] <= t.siteMs) j = i; });
+      return { fi: Math.max(0, j), at: 'at_site_test', ms: t.siteMs };
+    }
+    if (m.freeze !== null) return { fi: m.freeze, at: 'at_unload', ms: t.rows[m.freeze][0] };
+    return { fi: m.st.length - 1, at: 'at_trace_end', ms: t.rows[m.st.length - 1][0] };
+  }
+
+  function drawMod(m, idx, changed) {
+    var s = stateAt(m, idx), t = TR[S.k];
+    if (changed) {
+      document.getElementById(m.id + '-S').textContent = fx(s.S, 1);
+      document.getElementById(m.id + '-d').textContent = sg(s.S - m.vals.S0, 1) + ' from plant';
+      document.getElementById(m.id + '-st').innerHTML = status(m, s, idx);
+      var kv = [
+        [m.id === 'f1' ? 't_transit min' : 't min', fx(s.t, 1)],
+        [m.id === 'f1' ? 'P0 bar' : 'P0 master bar', fx(s.P0, 2)],
+        [m.id === 'f1' ? 'Pc bar' : 'P ema bar', fx(s.P, 2)],
+        ['ΔP %', s.dP === null ? 'na' : sg(s.dP * 100, 2)],
+        ['I_batch ' + m.iu, m.id === 'f1' ? fx(s.I, 2) : grp(s.I)],
+        ['K/I_batch', fx(s.KI, 4)],
+        ['pressure part mm', sg(s.pp, 2)],
+        ['time part mm', m.id === 'f2' ? '0' : sg(s.tp, 2)],
+        ['S_live mm', fx(s.S, 2)]
+      ];
+      document.getElementById(m.id + '-kv').innerHTML = kv.map(function (x) { return '<div><span class="k">' + x[0] + '</span><span class="v">' + x[1] + '</span></div>'; }).join('');
+      // result against the site cone test
+      var cp = cmpPoint(m, t), fi = cp.fi, at = cp.at;
+      var fs = m.st[fi], fin = document.getElementById(m.id + '-fin');
+      if (idx >= fi) {
+        var diff = t.site !== null ? fs.S - t.site : null;
+        if (S.T < cp.ms) { fin.innerHTML = '<span class="k">' + at + '</span><span class="k">pending  ' + clock(t.startMs + cp.ms) + '</span><span>site ' + fx(t.site, 1) + '</span>'; return chart(m, idx); }
+        var cls = diff === null ? '' : Math.abs(diff) <= 10 ? 'g' : 'b';
+        fin.innerHTML = '<span class="k">' + at + '</span><span>pred ' + fx(fs.S, 1) + '</span><span>site ' + (t.site !== null ? fx(t.site, 1) : 'na') + '</span>' +
+          '<span class="' + cls + '">diff ' + (diff === null ? 'na' : sg(diff, 1)) + '</span>';
+      } else {
+        fin.innerHTML = '<span class="k">' + at + '</span><span class="k">pending  ' + clock(t.startMs + cp.ms) + '</span><span>site ' + (t.site !== null ? fx(t.site, 1) : 'na') + '</span>';
+      }
+    }
+    chart(m, idx);
+  }
+
+  // ---------- chart ----------
+  function chart(m, idx) {
+    var svg = document.getElementById(m.id + '-svg'), t = TR[S.k];
+    var W = Math.max(280, svg.clientWidth || 400), H = 236, L = 40, R = 44, TP = 14, B = 24;
+    var iw = W - L - R, ih = H - TP - B, dur = Math.max(S.dur, 1);
+    function X(ms) { return L + ms / dur * iw; }
+    function YS(v) { return TP + (1 - (v - m.sAx.lo) / (m.sAx.hi - m.sAx.lo)) * ih; }
+    function YP(v) { return TP + (1 - (v - m.pAx.lo) / (m.pAx.hi - m.pAx.lo)) * ih; }
+    var o = [];
+    o.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="var(--paper)"/>');
+    // unload bands
+    S.bands.forEach(function (b) { o.push('<rect x="' + X(b[0]).toFixed(1) + '" y="' + TP + '" width="' + Math.max(1, X(b[1]) - X(b[0])).toFixed(1) + '" height="' + ih + '" fill="var(--paper-2)"/>'); });
+    // grid and slump ticks
+    m.sAx.ticks.forEach(function (v) {
+      var y = YS(v).toFixed(1);
+      o.push('<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '" stroke="var(--rule)" stroke-width="1"/>');
+      o.push('<text x="' + (L - 6) + '" y="' + (+y + 3.5) + '" text-anchor="end" font-size="10" fill="var(--slump)">' + +v.toFixed(1) + '</text>');
+    });
+    m.pAx.ticks.forEach(function (v) {
+      var y = YP(v); o.push('<text x="' + (W - R + 6) + '" y="' + (y + 3.5).toFixed(1) + '" font-size="10" fill="var(--press)">' + +v.toFixed(1) + '</text>');
+    });
+    // time ticks
+    var stepMin = dur > 90 * 60000 ? 20 : dur > 45 * 60000 ? 10 : 5;
+    for (var mm = 0; mm * 60000 <= dur; mm += stepMin) {
+      var x = X(mm * 60000).toFixed(1);
+      o.push('<line x1="' + x + '" x2="' + x + '" y1="' + (TP + ih) + '" y2="' + (TP + ih + 4) + '" stroke="var(--ink-3)" stroke-width="1"/>');
+      o.push('<text x="' + x + '" y="' + (H - 6) + '" text-anchor="middle" font-size="10" fill="var(--ink-3)">' + mm + '</text>');
+    }
+    o.push('<text x="' + (W - R) + '" y="' + (H - 6) + '" text-anchor="end" font-size="10" fill="var(--ink-3)" dx="40">min</text>');
+    o.push('<line x1="' + L + '" x2="' + (W - R) + '" y1="' + (TP + ih) + '" y2="' + (TP + ih) + '" stroke="var(--ink-3)" stroke-width="1"/>');
+    var T = S.T;
+    // event markers
+    if (m.id !== 'f1' && S.tM !== null && T >= S.tM) {
+      var xm = X(S.tM).toFixed(1);
+      o.push('<line x1="' + xm + '" x2="' + xm + '" y1="' + TP + '" y2="' + (TP + ih) + '" stroke="var(--press)" stroke-width="1" stroke-dasharray="2 3"/>');
+      o.push('<text x="' + (+xm + 4) + '" y="' + (TP + 9) + '" font-size="9.5" fill="var(--press)">master</text>');
+    }
+    if (m.id === 'f1' && idx >= 0 && m.st[idx].t0 !== null && m.st[idx].t0 !== undefined) {
+      var x0 = X(m.st[idx].t0 * 60000), x3 = X(Math.min(m.st[idx].t0 + 3, T / 60000) * 60000);
+      o.push('<rect x="' + x0.toFixed(1) + '" y="' + TP + '" width="' + Math.max(1, x3 - x0).toFixed(1) + '" height="' + ih + '" fill="var(--press)" fill-opacity="0.07"/>');
+      o.push('<text x="' + (x0 + 4).toFixed(1) + '" y="' + (TP + 9) + '" font-size="9.5" fill="var(--press)">P0 window</text>');
+    }
+    S.doses.forEach(function (d) {
+      if (T >= d) { var xd = X(d).toFixed(1); o.push('<line x1="' + xd + '" x2="' + xd + '" y1="' + (TP + ih - 10) + '" y2="' + (TP + ih) + '" stroke="var(--ink)" stroke-width="1.5"/>'); o.push('<text x="' + (+xd + 3) + '" y="' + (TP + ih - 3) + '" font-size="9.5" fill="var(--ink)">dose</text>'); }
+    });
+    // pressure readings
+    t.rows.forEach(function (r, i) {
+      var p = pval(m, r); if (p === null) return;
+      var past = i <= idx, used = m.id === 'f1' ? (m.st[i].phase === 'reference' || m.st[i].phase === 'transit') && m.st[i].tl === r[0] / 60000 : m.st[i].used;
+      if (!past) { o.push('<circle cx="' + X(r[0]).toFixed(1) + '" cy="' + YP(p).toFixed(1) + '" r="1.6" fill="var(--press)" fill-opacity="0.13"/>'); return; }
+      o.push(used ? '<circle cx="' + X(r[0]).toFixed(1) + '" cy="' + YP(p).toFixed(1) + '" r="2.3" fill="var(--press)"/>'
+                  : '<circle cx="' + X(r[0]).toFixed(1) + '" cy="' + YP(p).toFixed(1) + '" r="2.1" fill="var(--paper)" stroke="var(--press)" stroke-width="1" stroke-opacity="0.6"/>');
+    });
+    // P0 line
+    var s = idx >= 0 ? m.st[idx] : null;
+    if (s && s.P0 !== null && isFinite(s.P0)) {
+      var from = m.id === 'f1' ? (s.t0 + 3) * 60000 : S.tM;
+      if (m.id === 'f1') { for (var q = 0; q <= idx; q++) if (m.st[q].P0 !== null) { from = t.rows[q][0]; break; } }
+      if (T >= from) {
+        var yp0 = YP(s.P0).toFixed(1);
+        o.push('<line x1="' + X(from).toFixed(1) + '" x2="' + X(T).toFixed(1) + '" y1="' + yp0 + '" y2="' + yp0 + '" stroke="var(--press)" stroke-width="1" stroke-dasharray="5 4"/>');
+      }
+    }
+    // formula pressure line
+    var pp = [];
+    for (var i = 0; i <= idx; i++) {
+      var st = m.st[i], r = t.rows[i];
+      var upd = m.id === 'f1' ? (st.P !== null && st.tl === r[0] / 60000) : st.used;
+      if (upd && st.P !== null) pp.push(X(r[0]).toFixed(1) + ',' + YP(st.P).toFixed(1));
+    }
+    if (pp.length > 1) o.push('<polyline points="' + pp.join(' ') + '" fill="none" stroke="var(--press)" stroke-width="1.6" stroke-linejoin="round"/>');
+    // slump line, step after each reading
+    var sp = [X(0).toFixed(1) + ',' + YS(m.vals.S0).toFixed(1)], prev = m.vals.S0;
+    for (var j = 0; j <= idx; j++) {
+      var sj = m.st[j].S, xj = X(t.rows[j][0]).toFixed(1);
+      sp.push(xj + ',' + YS(prev).toFixed(1)); sp.push(xj + ',' + YS(sj).toFixed(1)); prev = sj;
+    }
+    sp.push(X(T).toFixed(1) + ',' + YS(prev).toFixed(1));
+    o.push('<polyline points="' + sp.join(' ') + '" fill="none" stroke="var(--slump)" stroke-width="2" stroke-linejoin="round"/>');
+    o.push('<circle cx="' + X(0).toFixed(1) + '" cy="' + YS(m.vals.S0).toFixed(1) + '" r="3" fill="var(--slump)"/>');
+    o.push('<circle cx="' + X(T).toFixed(1) + '" cy="' + YS(prev).toFixed(1) + '" r="3.2" fill="var(--slump)"/>');
+    // site cone test at the point the value is held
+    var cpc = cmpPoint(m, t), fi = cpc.fi;
+    if (t.site !== null && idx >= fi && T >= cpc.ms) {
+      var xs = X(cpc.ms), ys = YS(t.site);
+      o.push('<circle cx="' + xs.toFixed(1) + '" cy="' + ys.toFixed(1) + '" r="4.5" fill="var(--paper)" stroke="var(--slump)" stroke-width="1.5"/>');
+      o.push('<text x="' + (xs - 7).toFixed(1) + '" y="' + (ys - 7).toFixed(1) + '" text-anchor="end" font-size="9.5" fill="var(--slump)">site ' + +t.site.toFixed(1) + '</text>');
+    }
+    // cursor
+    var xc = X(T).toFixed(1);
+    o.push('<line x1="' + xc + '" x2="' + xc + '" y1="' + TP + '" y2="' + (TP + ih) + '" stroke="var(--ink)" stroke-width="1" stroke-opacity="0.55"/>');
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('font-family', 'JetBrains Mono, ui-monospace, Menlo, monospace');
+    svg.innerHTML = o.join('');
+  }
+
+  // ---------- loop and controls ----------
+  function tick(now) {
+    if (S.lastFrame === null) S.lastFrame = now;
+    var dt = Math.min(250, now - S.lastFrame); S.lastFrame = now;
+    if (S.playing) {
+      S.T = Math.min(S.dur, S.T + dt * S.speed);
+      if (S.T >= S.dur) { S.playing = false; paintPlay(); }
+      draw(false);
+    }
+    requestAnimationFrame(tick);
+  }
+  $('#play').onclick = function () { if (!S.playing && S.T >= S.dur) S.T = 0; S.playing = !S.playing; paintPlay(); draw(true); };
+  $('#restart').onclick = function () { S.T = 0; S.playing = true; paintPlay(); draw(true); };
+  $('#end').onclick = function () { S.T = S.dur; S.playing = false; paintPlay(); draw(true); };
+  $('#scrub').addEventListener('input', function (e) { S.T = Number(e.target.value); draw(true); });
+  document.addEventListener('keydown', function (e) {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    var rows = TR[S.k].rows;
+    if (e.code === 'Space') { e.preventDefault(); $('#play').click(); }
+    else if (e.key === 'ArrowRight') { var i = Math.min(rows.length - 1, idxAt(S.T) + 1); S.T = rows[i][0]; S.playing = false; paintPlay(); draw(true); }
+    else if (e.key === 'ArrowLeft') { var j = Math.max(0, idxAt(S.T) - 1); S.T = rows[j][0]; S.playing = false; paintPlay(); draw(true); }
+  });
+  if (window.ResizeObserver) new ResizeObserver(function () { draw(true); }).observe(modsEl);
+
+  paintSpeeds();
+  loadTrip(0);
+  requestAnimationFrame(tick);
+})();
+</script>
+
+</body>
+</html>
