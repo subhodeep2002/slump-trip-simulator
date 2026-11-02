@@ -13,8 +13,11 @@ Replays real concrete truck trips reading by reading and shows how three slump f
 
 ## Trips
 
-- Trips 1 to 20: truck 1033, June and July 2026, one reading per minute.
-- Trips 21 to 23: 24 October 2026, trucks 1038, 1037 and 1033.
+68 trips, oldest first, one reading per minute. Truck 1033 unless noted.
+
+- Trips 1 to 20: June and July 2026.
+- Trips 21 to 58: August and early September 2026, with the site cone test time.
+- Trips 59 to 68: October 2026. Trips 62 and 63 are trucks 1037 and 1038 (24 October). Where the slump sheet has no site test time, the prediction is compared at the first discharge.
 
 ## Use
 
